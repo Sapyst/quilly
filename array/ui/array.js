@@ -206,6 +206,75 @@
 		});
 	}
 
+	// ---------- layout dinâmico: a janela muda, o canvas acompanha ----------
+	// O miniPaint só redimensiona o canvas ao dar zoom; encolher a janela deixava o canvas saindo pela borda.
+	// Aqui, a cada resize (ou barra de opções que cresce), o canvas é refeito no espaço que há; se o zoom era
+	// "ajustar à janela", ajusta de novo.
+	let fitZoom = null, relayoutPending = false;
+	function relayout() {
+		if (relayoutPending) return;
+		relayoutPending = true;
+		requestAnimationFrame(() => {
+			relayoutPending = false;
+			const wasFit = fitZoom != null && Math.abs(cfg.ZOOM - fitZoom) < 0.005;
+			G.prepare_canvas();
+			if (wasFit) preview.zoom_auto(); else cfg.need_render = true;
+		});
+	}
+	function layoutEvents() {
+		window.addEventListener('resize', relayout);
+		const za = preview.zoom_auto.bind(preview);
+		preview.zoom_auto = function (...a) { const r = za(...a); fitZoom = cfg.ZOOM; return r; };
+		const saa = tools.show_action_attributes.bind(tools);
+		tools.show_action_attributes = function (...a) { const r = saa(...a); relayout(); return r; };
+		new ResizeObserver(relayout).observe($('#main_wrapper'));
+	}
+
+	// ---------- navigator: proporção certa e zona visível em vermelho acinzentado ----------
+	// O miniPaint desenha a prévia num retângulo fixo de 176x100 (imagem esticada) e marca a zona visível em
+	// verde puro. Toda a conta dele (desenho, retângulo, clique) usa PREVIEW_SIZE, então basta manter esse
+	// tamanho na proporção do documento; a cor é a nossa versão do mesmo desenho.
+	const PREVIEW_BOX = { w: 176, h: 132 };
+	function fitPreview() {
+		const W = cfg.WIDTH, H = cfg.HEIGHT;
+		if (!W || !H) return;
+		const k = Math.min(PREVIEW_BOX.w / W, PREVIEW_BOX.h / H);
+		const w = Math.max(24, Math.round(W * k)), h = Math.max(24, Math.round(H * k));
+		if (preview.PREVIEW_SIZE.w === w && preview.PREVIEW_SIZE.h === h) return;
+		preview.PREVIEW_SIZE = { w, h };
+		const c = $('#canvas_preview');
+		c.width = w; c.height = h;                       // zera o contexto: prepare_canvas refaz as opções
+		const wrap = $('.canvas_preview_wrapper');
+		if (wrap) { wrap.style.width = w + 'px'; wrap.style.height = h + 'px'; wrap.style.margin = '6px auto 8px auto'; }
+		preview.prepare_canvas();
+		cfg.need_render = true;
+	}
+	function navigatorEvents() {
+		preview.render_preview_active_zone = function () {
+			if (this.canvas_preview == undefined) this.canvas_preview = $('#canvas_preview').getContext('2d');
+			const visible_w = cfg.visible_width / cfg.ZOOM, visible_h = cfg.visible_height / cfg.ZOOM;
+			let rw = this.PREVIEW_SIZE.w * visible_w / cfg.WIDTH, rh = this.PREVIEW_SIZE.h * visible_h / cfg.HEIGHT;
+			const start = L.get_world_coords(0, 0);
+			let rx = Math.max(0, start.x / cfg.WIDTH * this.PREVIEW_SIZE.w), ry = Math.max(0, start.y / cfg.HEIGHT * this.PREVIEW_SIZE.h);
+			rw = Math.min(this.PREVIEW_SIZE.w - 1, rw); rh = Math.min(this.PREVIEW_SIZE.h - 1, rh);
+			if (rx + rw > this.PREVIEW_SIZE.w) rx = this.PREVIEW_SIZE.w - rw;
+			if (ry + rh > this.PREVIEW_SIZE.h) ry = this.PREVIEW_SIZE.h - rh;
+			if (rx == 0 && ry == 0 && rw == this.PREVIEW_SIZE.w - 1 && rh == this.PREVIEW_SIZE.h - 1) return;   // tudo visível
+			const ctx = this.canvas_preview;
+			ctx.lineWidth = 1;
+			ctx.beginPath();
+			ctx.rect(Math.round(rx) + 0.5, Math.round(ry) + 0.5, rw, rh);
+			ctx.fillStyle = 'rgba(196, 118, 118, 0.26)';
+			ctx.strokeStyle = '#c98080';
+			ctx.fill();
+			ctx.stroke();
+		};
+		// a cada quadro desenhado, confere se o documento mudou de tamanho (novo, abrir, cortar, redimensionar)
+		const render = L.render.bind(L);
+		L.render = function (force) { if (force === true && cfg.need_render) fitPreview(); return render(force); };
+		fitPreview();
+	}
+
 	// ---------- painéis ----------
 	function togglePanel(target) {
 		const h = document.querySelector('.block h2.toggle[data-target="' + target + '"]');
@@ -217,9 +286,7 @@
 	}
 	function togglePanels() {
 		document.body.classList.toggle('array-panels-hidden');
-		window.dispatchEvent(new Event('resize'));
-		G.prepare_canvas();
-		cfg.need_render = true;
+		relayout();
 	}
 
 	// ---------- seleção ----------
@@ -629,6 +696,8 @@
 		fixMenus();
 		interceptDownloads();
 		viewEvents();
+		layoutEvents();
+		navigatorEvents();
 		hostEvents();
 		trackChanges();
 		blendRow();
