@@ -1,0 +1,24 @@
+# built packages go to GitHub Releases, not to the repository
+dist/
+# python
+__pycache__/
+*.pyc
+# editor backups this project makes before changing a file
+*.bak
+*.bak-*
+*.bak[0-9]*
+*.tmp
+*.parcial
+# windows build output (the sources are kept in windows/)
+bin/
+obj/
+publish/
+*.exe
+*.apk
+*.msi
+*.zip
+.vs/
+node_modules/
+# runtime data that must never leave the machine
+profile/
+dados/

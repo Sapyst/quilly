@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <AssemblyName>Noty</AssemblyName>
+    <RootNamespace>Noty</RootNamespace>
+    <Product>Noty</Product>
+    <Version>1.0.0</Version>
+    <ApplicationIcon>icon.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <!-- Um exe autocontido: nunca quebra se o SDK .NET sumir depois. -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <DebugType>none</DebugType>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- A UI inteira do editor, embutida no exe. -->
+    <EmbeddedResource Include="ui\editor.html" LogicalName="Noty.ui.editor.html" />
+
+    <!-- O mesmo .ico do exe, embutido: janela e barra de tarefas pegam o
+         icone completo (16..256) em vez do 32x32 raspado do executavel. -->
+    <EmbeddedResource Include="icon.ico" LogicalName="Noty.icon.ico" />
+    <EmbeddedResource Include="hyp.ico" LogicalName="Noty.hyp.ico" />
+    <EmbeddedResource Include="hyp.png" LogicalName="Noty.hyp.png" />
+  </ItemGroup>
+
+</Project>

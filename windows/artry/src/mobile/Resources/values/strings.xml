@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Artry</string>
+    <string name="action_new">Novo</string>
+    <string name="action_open">Abrir</string>
+    <string name="action_save">Salvar</string>
+    <string name="action_share">Compartilhar</string>
+    <string name="action_about">Sobre</string>
+    <string name="editor_hint">Comece a digitar seu texto ou documento aqui…</string>
+    <string name="status_words_chars">Palavras: %1$d  ·  Caracteres: %2$d</string>
+</resources>

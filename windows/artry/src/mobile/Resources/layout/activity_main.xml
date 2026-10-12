@@ -1,0 +1,393 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/artry_bg">
+
+    <!-- ================= HOME VIEW ================= -->
+    <LinearLayout
+        android:id="@+id/layoutHome"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:background="@color/artry_bg"
+        android:visibility="visible">
+
+        <!-- Home Top Bar -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@color/artry_surface"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp">
+
+            <ImageView
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:src="@mipmap/ic_launcher"
+                android:contentDescription="@string/app_name" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="12dp"
+                android:text="@string/app_name"
+                android:textColor="@color/artry_text"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btnHomeOpen"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="@string/action_open"
+                android:textColor="@color/artry_text"
+                android:textSize="12sp"
+                android:background="@drawable/btn_format_bg"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:layout_marginEnd="6dp" />
+
+            <Button
+                android:id="@+id/btnHomeNew"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="+ Novo"
+                android:textColor="@color/artry_black"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:backgroundTint="@color/artry_yellow"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp" />
+        </LinearLayout>
+
+        <!-- Home Scrollable Content -->
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <!-- Grid / Container for document cards -->
+                <LinearLayout
+                    android:id="@+id/containerHomeCards"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+            </LinearLayout>
+        </ScrollView>
+    </LinearLayout>
+
+    <!-- ================= EDITOR VIEW ================= -->
+    <LinearLayout
+        android:id="@+id/layoutEditor"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:background="@color/artry_bg"
+        android:visibility="gone">
+
+        <!-- Editor Top Bar -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@color/artry_surface"
+            android:paddingStart="10dp"
+            android:paddingEnd="12dp">
+
+            <Button
+                android:id="@+id/btnBackToHome"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="← Início"
+                android:textColor="@color/artry_text"
+                android:textSize="12sp"
+                android:background="@drawable/btn_format_bg"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
+                android:layout_marginEnd="6dp" />
+
+            <TextView
+                android:id="@+id/lblEditorTitle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
+                android:text="Sem título"
+                android:textColor="@color/artry_text"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:singleLine="true"
+                android:ellipsize="end" />
+
+            <Button
+                android:id="@+id/btnNew"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="@string/action_new"
+                android:textColor="@color/artry_text"
+                android:textSize="12sp"
+                android:background="@drawable/btn_format_bg"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:layout_marginEnd="4dp" />
+
+            <Button
+                android:id="@+id/btnOpen"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="@string/action_open"
+                android:textColor="@color/artry_text"
+                android:textSize="12sp"
+                android:background="@drawable/btn_format_bg"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:layout_marginEnd="4dp" />
+
+            <Button
+                android:id="@+id/btnSave"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="@string/action_save"
+                android:textColor="@color/artry_black"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:backgroundTint="@color/artry_yellow"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
+                android:layout_marginEnd="4dp" />
+
+            <Button
+                android:id="@+id/btnShare"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="@string/action_share"
+                android:textColor="@color/artry_text"
+                android:textSize="12sp"
+                android:background="@drawable/btn_format_bg"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp" />
+        </LinearLayout>
+
+        <!-- Formatting Ribbon -->
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:background="@color/artry_surface"
+            android:scrollbars="none"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <Button
+                    android:id="@+id/btnFmtBold"
+                    android:layout_width="38dp"
+                    android:layout_height="34dp"
+                    android:text="B"
+                    android:textStyle="bold"
+                    android:textColor="@color/artry_text"
+                    android:textSize="13sp"
+                    android:background="@drawable/btn_format_bg"
+                    android:layout_marginEnd="4dp" />
+
+                <Button
+                    android:id="@+id/btnFmtItalic"
+                    android:layout_width="38dp"
+                    android:layout_height="34dp"
+                    android:text="I"
+                    android:textStyle="italic"
+                    android:textColor="@color/artry_text"
+                    android:textSize="13sp"
+                    android:background="@drawable/btn_format_bg"
+                    android:layout_marginEnd="4dp" />
+
+                <Button
+                    android:id="@+id/btnFmtUnderline"
+                    android:layout_width="38dp"
+                    android:layout_height="34dp"
+                    android:text="U"
+                    android:textColor="@color/artry_text"
+                    android:textSize="13sp"
+                    android:background="@drawable/btn_format_bg"
+                    android:layout_marginEnd="4dp" />
+
+                <Button
+                    android:id="@+id/btnFmtStrike"
+                    android:layout_width="38dp"
+                    android:layout_height="34dp"
+                    android:text="S"
+                    android:textColor="@color/artry_text"
+                    android:textSize="13sp"
+                    android:background="@drawable/btn_format_bg"
+                    android:layout_marginEnd="4dp" />
+
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="24dp"
+                    android:background="@color/artry_border"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginEnd="6dp" />
+
+                <Button
+                    android:id="@+id/btnFmtH1"
+                    android:layout_width="44dp"
+                    android:layout_height="34dp"
+                    android:text="H1"
+                    android:textStyle="bold"
+                    android:textColor="@color/artry_text"
+                    android:textSize="12sp"
+                    android:background="@drawable/btn_format_bg"
+                    android:layout_marginEnd="4dp" />
+
+                <Button
+                    android:id="@+id/btnFmtH2"
+                    android:layout_width="44dp"
+                    android:layout_height="34dp"
+                    android:text="H2"
+                    android:textStyle="bold"
+                    android:textColor="@color/artry_text"
+                    android:textSize="12sp"
+                    android:background="@drawable/btn_format_bg"
+                    android:layout_marginEnd="4dp" />
+
+                <Button
+                    android:id="@+id/btnFmtBullet"
+                    android:layout_width="38dp"
+                    android:layout_height="34dp"
+                    android:text="•"
+                    android:textStyle="bold"
+                    android:textColor="@color/artry_text"
+                    android:textSize="16sp"
+                    android:background="@drawable/btn_format_bg"
+                    android:layout_marginEnd="4dp" />
+
+                <Button
+                    android:id="@+id/btnFmtNumbered"
+                    android:layout_width="38dp"
+                    android:layout_height="34dp"
+                    android:text="1."
+                    android:textStyle="bold"
+                    android:textColor="@color/artry_text"
+                    android:textSize="12sp"
+                    android:background="@drawable/btn_format_bg"
+                    android:layout_marginEnd="4dp" />
+
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="24dp"
+                    android:background="@color/artry_border"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginEnd="6dp" />
+
+                <Button
+                    android:id="@+id/btnSizeMinus"
+                    android:layout_width="38dp"
+                    android:layout_height="34dp"
+                    android:text="A-"
+                    android:textColor="@color/artry_text"
+                    android:textSize="12sp"
+                    android:background="@drawable/btn_format_bg"
+                    android:layout_marginEnd="4dp" />
+
+                <Button
+                    android:id="@+id/btnSizePlus"
+                    android:layout_width="38dp"
+                    android:layout_height="34dp"
+                    android:text="A+"
+                    android:textColor="@color/artry_text"
+                    android:textSize="12sp"
+                    android:background="@drawable/btn_format_bg"
+                    android:layout_marginEnd="4dp" />
+
+                <Button
+                    android:id="@+id/btnClearFormat"
+                    android:layout_width="wrap_content"
+                    android:layout_height="34dp"
+                    android:text="Limpar"
+                    android:textColor="@color/artry_muted"
+                    android:textSize="11sp"
+                    android:background="@drawable/btn_format_bg"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp" />
+            </LinearLayout>
+        </HorizontalScrollView>
+
+        <!-- Document Paper Area -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:padding="10dp">
+
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/card_paper_bg"
+                android:fillViewport="true">
+
+                <EditText
+                    android:id="@+id/txtEditor"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minLines="18"
+                    android:gravity="top|start"
+                    android:padding="16dp"
+                    android:textColor="@color/artry_text"
+                    android:textColorHint="@color/artry_muted"
+                    android:hint="@string/editor_hint"
+                    android:textSize="16sp"
+                    android:lineSpacingExtra="4dp"
+                    android:background="@android:color/transparent"
+                    android:inputType="textMultiLine|textCapSentences|textAutoCorrect"
+                    android:scrollbars="vertical" />
+            </ScrollView>
+        </FrameLayout>
+
+        <!-- Bottom Status Bar -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="28dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@color/artry_surface"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp">
+
+            <TextView
+                android:id="@+id/lblDocStatus"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Sem título"
+                android:textColor="@color/artry_muted"
+                android:textSize="11sp"
+                android:singleLine="true" />
+
+            <TextView
+                android:id="@+id/lblWordStats"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Palavras: 0  ·  Caracteres: 0"
+                android:textColor="@color/artry_muted"
+                android:textSize="11sp" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

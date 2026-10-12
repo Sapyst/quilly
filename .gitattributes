@@ -1,0 +1,9 @@
+* text=auto
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.zst binary
+*.dic -text
+*.aff -text

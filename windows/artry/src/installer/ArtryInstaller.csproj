@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Artry-Installer</AssemblyName>
+    <RootNamespace>ArtryInstaller</RootNamespace>
+    <Product>Instalador do Artry</Product>
+    <ApplicationIcon>..\icon.ico</ApplicationIcon>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\FileAssociationService.cs" Link="FileAssociationService.cs" />
+    <Compile Include="..\IconArt.cs" Link="IconArt.cs" />
+    <Compile Include="..\Theme.cs" Link="Theme.cs" />
+    <EmbeddedResource Include="..\icon.png" Link="icon.png" />
+    <EmbeddedResource Include="..\icon.ico" Link="icon.ico" />
+    <EmbeddedResource Include="..\..\Artry.exe" Link="Payload\Artry.exe" />
+  </ItemGroup>
+</Project>

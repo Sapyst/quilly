@@ -1,0 +1,1223 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Noty</title>
+<style>
+/* ================= estrutura (o VISUAL vem do theme.css, injetado depois) */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  /* Valores de seguranca: se o theme.css do usuario sumir ou quebrar,
+     o app continua legivel. O theme.css sobrescreve tudo isto. */
+  --fundo: rgba(13, 20, 15, 0.35);
+  --texto: rgba(238, 244, 240, 0.96);
+  --texto-suave: rgba(238, 244, 240, 0.45);
+  --fonte: "Cascadia Mono", Consolas, monospace;
+  --tamanho: 15px;
+  --altura-linha: 1.75;
+  --largura-texto: 68ch;
+  --selecao: rgba(126, 214, 158, 0.30);
+  --cursor: #8fd6a8;
+  --painel: rgba(17, 26, 20, 0.92);
+  --painel-borda: rgba(255, 255, 255, 0.10);
+  --realce: rgba(130, 220, 165, 0.16);
+  --rolagem: rgba(238, 244, 240, 0.16);
+  --rolagem-hover: rgba(143, 214, 168, 0.45);
+}
+
+html, body { height: 100%; overflow: hidden; background: transparent; }
+
+/* ================= barra de rolagem (tema: --rolagem / --rolagem-hover,
+   ou sobrescreva os seletores ::-webkit-scrollbar-* direto no theme.css) */
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--rolagem, rgba(238, 244, 240, 0.16));
+  border-radius: 8px;
+  /* borda transparente + padding-box: o polegar "flutua" sem tocar as bordas */
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--rolagem-hover, rgba(143, 214, 168, 0.45));
+  background-clip: padding-box;
+}
+
+body {
+  display: flex; flex-direction: column;
+  background: var(--fundo);
+  color: var(--texto);
+  font-family: var(--fonte);
+  font-size: var(--tamanho);
+}
+
+/* ================= barra de menu (escondida; Alt mostra) */
+#menubar {
+  display: none; flex: 0 0 auto; gap: 2px;
+  padding: 3px 8px; user-select: none;
+  background: var(--painel);
+  border-bottom: 1px solid var(--painel-borda);
+  font-size: 13px;
+}
+#menubar.aberta { display: flex; }
+.menu-top {
+  position: relative; padding: 4px 10px; border-radius: 6px; cursor: default;
+}
+.menu-top:hover, .menu-top.ativo { background: var(--realce); }
+.dropdown {
+  display: none; position: absolute; top: 100%; left: 0; z-index: 50;
+  min-width: 230px; padding: 5px;
+  background: var(--painel); border: 1px solid var(--painel-borda);
+  border-radius: 9px; box-shadow: 0 10px 34px rgba(0,0,0,.45);
+}
+.menu-top.ativo .dropdown { display: block; }
+.mi {
+  display: flex; justify-content: space-between; gap: 24px;
+  padding: 5px 10px; border-radius: 6px; white-space: nowrap; cursor: default;
+}
+.mi:hover { background: var(--realce); }
+.mi .tecla { color: var(--texto-suave); font-size: 12px; }
+.mi.marcado::before { content: "✓ "; }
+.mi.desmarcado::before { content: "\2007\2007"; }
+.msep { height: 1px; margin: 5px 8px; background: var(--painel-borda); }
+
+/* ================= editor */
+#centro { flex: 1 1 auto; display: flex; overflow: hidden; }
+#editor {
+  /* Largura total da janela: a coluna de texto e centralizada pelo padding,
+     assim a barra de rolagem fica no canto extremo direito do app. */
+  width: 100%;
+  height: 100%;
+  padding: 48px max(24px, calc((100% - var(--largura-texto)) / 2)) 32px;
+  background: transparent; color: inherit;
+  font: inherit; line-height: var(--altura-linha);
+  border: none; outline: none; resize: none;
+  caret-color: var(--cursor);
+  white-space: pre-wrap; overflow-wrap: break-word;
+}
+#editor.sem-quebra { white-space: pre; overflow-x: auto; }
+#editor::selection, ::selection { background: var(--selecao); }
+#editor::placeholder { color: var(--texto-suave); }
+
+/* ================= barra de status */
+#status {
+  flex: 0 0 auto; display: flex; justify-content: center; gap: 6px;
+  padding: 7px 12px; font-size: 12px; color: var(--texto-suave);
+  border-top: 1px solid var(--painel-borda); user-select: none;
+}
+#status .dica { position: absolute; right: 12px; }
+
+/* ================= busca */
+#busca {
+  display: none; position: absolute; top: 10px; right: 14px; z-index: 40;
+  gap: 6px; align-items: center; padding: 6px 8px;
+  background: var(--painel); border: 1px solid var(--painel-borda);
+  border-radius: 9px; box-shadow: 0 8px 26px rgba(0,0,0,.4);
+}
+#busca.aberta { display: flex; }
+#busca input {
+  width: 220px; padding: 4px 8px;
+  background: rgba(0,0,0,.25); color: var(--texto);
+  border: 1px solid var(--painel-borda); border-radius: 6px;
+  font: inherit; font-size: 13px; outline: none;
+}
+#busca .cont { font-size: 12px; color: var(--texto-suave); min-width: 42px; text-align: center; }
+#busca button {
+  padding: 3px 8px; background: transparent; color: var(--texto);
+  border: none; border-radius: 5px; font: inherit; font-size: 13px; cursor: pointer;
+}
+#busca button:hover { background: var(--realce); }
+
+/* ================= paineis de tela cheia (tema, preview, sobre) */
+.painel-cheio {
+  display: none; position: absolute; inset: 0; z-index: 60;
+  flex-direction: column;
+  /* fosco de verdade: escurece e embaça o editor que fica atras */
+  background: rgba(6, 10, 8, 0.55);
+  backdrop-filter: blur(22px) saturate(1.1);
+}
+.painel-cheio.aberto { display: flex; }
+.painel-topo {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 10px;
+  padding: 9px 14px; font-size: 13px;
+  background: var(--painel); border-bottom: 1px solid var(--painel-borda);
+  user-select: none;
+}
+.painel-topo .titulo { font-weight: 600; margin-right: auto; }
+.painel-topo button {
+  padding: 5px 12px; background: transparent; color: var(--texto);
+  border: 1px solid var(--painel-borda); border-radius: 7px;
+  font: inherit; font-size: 12.5px; cursor: pointer;
+}
+.painel-topo button:hover { background: var(--realce); }
+
+#tema-editor {
+  flex: 1 1 auto; padding: 18px 22px;
+  background: rgba(0,0,0,.30); color: var(--texto);
+  font: 13.5px/1.6 var(--fonte);
+  border: none; outline: none; resize: none;
+  white-space: pre; overflow: auto; tab-size: 2;
+}
+#tema-aviso { font-size: 12px; color: var(--texto-suave); }
+
+#preview-corpo {
+  flex: 1 1 auto; overflow-y: auto; display: flex; justify-content: center;
+}
+#preview-md {
+  width: min(var(--largura-texto), 100%);
+  padding: 48px 24px 64px; line-height: var(--altura-linha);
+}
+#preview-md h1, #preview-md h2, #preview-md h3,
+#preview-md h4, #preview-md h5, #preview-md h6 { margin: 1.1em 0 .45em; line-height: 1.3; }
+#preview-md h1 { font-size: 1.7em; } #preview-md h2 { font-size: 1.45em; }
+#preview-md h3 { font-size: 1.25em; } #preview-md h4 { font-size: 1.1em; }
+#preview-md p, #preview-md ul, #preview-md ol, #preview-md blockquote { margin: .55em 0; }
+#preview-md ul, #preview-md ol { padding-left: 1.6em; }
+#preview-md blockquote {
+  padding: .2em 1em; border-left: 3px solid var(--cursor);
+  color: var(--texto-suave);
+}
+#preview-md code {
+  padding: .1em .35em; background: rgba(0,0,0,.35); border-radius: 5px; font-size: .92em;
+}
+#preview-md pre {
+  padding: .8em 1em; margin: .7em 0; background: rgba(0,0,0,.35);
+  border-radius: 9px; overflow-x: auto;
+}
+#preview-md pre code { padding: 0; background: none; }
+#preview-md hr { border: none; border-top: 1px solid var(--painel-borda); margin: 1.4em 0; }
+#preview-md a { color: var(--cursor); }
+
+#sobre-corpo {
+  flex: 1 1 auto; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 8px;
+  text-align: center; line-height: 1.9; font-size: 13.5px;
+}
+#sobre-corpo .logo { font-size: 40px; font-style: italic; font-family: Georgia, serif; }
+#sobre-corpo .suave { color: var(--texto-suave); font-size: 12.5px; }
+
+/* ================= dialogos (sair sem salvar, avisos, confirmacoes) */
+.dlg-fundo {
+  position: absolute; inset: 0; z-index: 80;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(6, 10, 8, 0.45);
+  backdrop-filter: blur(14px) saturate(1.1);
+}
+.dlg {
+  min-width: 300px; max-width: 76%;
+  padding: 20px 22px 16px;
+  background: var(--painel);
+  border: 1px solid var(--painel-borda);
+  border-radius: 14px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.5);
+  font-size: 13.5px;
+}
+.dlg-msg { line-height: 1.6; margin-bottom: 16px; white-space: pre-wrap; }
+.dlg-botoes { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.dlg-btn {
+  padding: 6px 14px; background: transparent; color: var(--texto);
+  border: 1px solid var(--painel-borda); border-radius: 8px;
+  font: inherit; font-size: 12.5px; cursor: pointer;
+}
+.dlg-btn:hover { background: var(--realce); }
+.dlg-btn.primario { background: var(--realce); border-color: var(--cursor); }
+.dlg-btn.primario:hover { filter: brightness(1.15); }
+.dlg-btn:focus-visible { outline: 1px solid var(--cursor); outline-offset: 1px; }
+
+/* arrastar arquivo por cima */
+body.arrastando::after {
+  content: "solte o .md ou .txt aqui";
+  position: absolute; inset: 10px; z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  border: 2px dashed var(--cursor); border-radius: 14px;
+  background: rgba(0,0,0,.35); font-size: 15px; pointer-events: none;
+}
+</style>
+<style id="tema-do-usuario">/* theme.css entra aqui */</style>
+</head>
+<body>
+
+<nav id="menubar"></nav>
+
+<div id="busca">
+  <input id="busca-campo" type="text" placeholder="Localizar…" spellcheck="false">
+  <span class="cont" id="busca-cont"></span>
+  <button id="busca-ant" title="Anterior (Shift+Enter)">▲</button>
+  <button id="busca-prox" title="Próximo (Enter)">▼</button>
+  <button id="busca-fechar" title="Fechar (Esc)"><svg class="ic so" style="width:14px;height:14px;vertical-align:-2px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+</div>
+
+<div id="centro">
+  <textarea id="editor" spellcheck="true" lang="pt-BR"
+    placeholder="Escreve. Alt mostra o menu; botão direito, o resto."></textarea>
+</div>
+
+<div id="status">
+  <span id="st-palavras">0 Palavras</span><span>·</span>
+  <span id="st-chars">0 Caracteres</span><span>·</span>
+  <span id="st-linhas">1 Linhas</span>
+</div>
+
+<div id="painel-tema" class="painel-cheio">
+  <div class="painel-topo">
+    <span class="titulo">Tema — CSS livre</span>
+    <span id="tema-aviso">aplica ao vivo enquanto digita</span>
+    <button id="tema-restaurar">Restaurar padrão</button>
+    <button id="tema-salvar">Salvar (Ctrl+S)</button>
+    <button id="tema-fechar">Fechar (Esc)</button>
+  </div>
+  <textarea id="tema-editor" spellcheck="false"></textarea>
+</div>
+
+<div id="painel-preview" class="painel-cheio">
+  <div class="painel-topo">
+    <span class="titulo">Pré-visualização</span>
+    <button id="preview-fechar">Voltar ao editor (Esc)</button>
+  </div>
+  <div id="preview-corpo"><div id="preview-md"></div></div>
+</div>
+
+<div id="painel-sobre" class="painel-cheio">
+  <div class="painel-topo">
+    <span class="titulo">Sobre</span>
+    <button id="sobre-fechar">Fechar (Esc)</button>
+  </div>
+  <div id="sobre-corpo">
+    <div class="logo">n</div>
+    <div><b>Noty</b> <span id="sobre-versao"></span></div>
+    <div>Editor de texto simples pra .md e .txt.</div>
+    <div class="suave">
+      Alt — menu · Botão direito — contexto · Ctrl+M — pré-visualizar<br>
+      Ctrl+F — localizar · Ctrl+T — tema · F12 — devtools<br><br>
+      A ortografia usa o corretor do Chromium: o dicionário do idioma<br>
+      escolhido é baixado sozinho (padrão Google) na primeira vez com internet.
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+'use strict';
+
+/* ================================================================= rpc */
+var rpcSeq = 0, rpcPend = {};
+function rpc(method, args) {
+  return new Promise(function (resolve, reject) {
+    var id = ++rpcSeq;
+    rpcPend[id] = { resolve: resolve, reject: reject };
+    window.chrome.webview.postMessage({ type: 'rpc', id: id, method: method, args: args || {} });
+  });
+}
+function send(m) { try { window.chrome.webview.postMessage(m); } catch (e) {} }
+
+window.chrome.webview.addEventListener('message', function (ev) {
+  var m = ev.data || {};
+  if (m.type === 'rpc-reply') {
+    var p = rpcPend[m.id];
+    if (!p) return;
+    delete rpcPend[m.id];
+    if (m.ok) p.resolve(m.data); else p.reject(new Error(m.error || 'erro'));
+    return;
+  }
+  if (m.type === 'action') executaAcao(m.action);
+});
+
+/* ================================================================= estado */
+var ed = document.getElementById('editor');
+var arquivo = { path: null, name: 'sem título.hyp' };
+var sujo = false;
+var settings = { spellLang: 'pt-BR', ui: {} };
+var temaAtual = '';
+
+function ext() {
+  var n = (arquivo.name || '').toLowerCase();
+  if (n.endsWith('.txt')) return '.txt';
+  if (n.endsWith('.html') || n.endsWith('.htm')) return '.html';
+  if (n.endsWith('.md') || n.endsWith('.markdown')) return '.md';
+  return '.hyp';
+}
+/* .hyp, .md e .html carregam Markdown; .txt é texto puro. */
+function usaMarkdown() { return ext() !== '.txt'; }
+
+function marcaSujo(v) {
+  if (sujo === v) return;
+  sujo = v;
+  send({ type: 'dirty', value: v });
+  atualizaTitulo();
+}
+
+function atualizaTitulo() {
+  var t = (sujo ? '• ' : '') + arquivo.name + ' — Noty';
+  document.title = t;
+  send({ type: 'title', text: t });
+  send({ type: 'fileinfo', ext: ext() });
+}
+
+function atualizaContador() {
+  var v = ed.value;
+  // Desconsidera blocos de anexo hyp-anexo na contagem estatística
+  var textoLimpo = v.replace(/```hyp-anexo[\s\S]*?```/gi, '').replace(/<!--\s*=====\s*ANEXOS HYP\s*=====\s*-->/gi, '');
+  var palavras = (textoLimpo.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu) || []).length;
+  var linhas = textoLimpo.length ? textoLimpo.split('\n').length : 1;
+  document.getElementById('st-palavras').textContent = palavras + (palavras === 1 ? ' Palavra' : ' Palavras');
+  document.getElementById('st-chars').textContent = textoLimpo.length + (textoLimpo.length === 1 ? ' Caractere' : ' Caracteres');
+  document.getElementById('st-linhas').textContent = linhas + (linhas === 1 ? ' Linha' : ' Linhas');
+}
+
+ed.addEventListener('input', function () { marcaSujo(true); atualizaContador(); });
+
+/* ================================================================= dialogos */
+/* Dialogo de vidro do proprio app (nada de MessageBox nativo).
+   botoes: [{ rotulo, valor, primario?, cancela? }] — Esc pega o "cancela"
+   (ou o ultimo), Enter pega o "primario" (ou o primeiro). */
+function dialogo(msg, botoes) {
+  return new Promise(function (resolve) {
+    var fundo = document.createElement('div');
+    fundo.className = 'dlg-fundo';
+    var caixa = document.createElement('div');
+    caixa.className = 'dlg';
+    var texto = document.createElement('div');
+    texto.className = 'dlg-msg';
+    texto.textContent = msg;
+    var linha = document.createElement('div');
+    linha.className = 'dlg-botoes';
+
+    var cancela = botoes.filter(function (b) { return b.cancela; })[0] || botoes[botoes.length - 1];
+    var primario = botoes.filter(function (b) { return b.primario; })[0] || botoes[0];
+    var primeiroBtn = null;
+
+    function encerra(valor) {
+      document.removeEventListener('keydown', teclas, true);
+      fundo.remove();
+      ed.focus();
+      resolve(valor);
+    }
+    function teclas(e) {
+      // Enquanto o dialogo esta na tela, o teclado e dele.
+      e.stopPropagation();
+      if (e.key === 'Escape') { e.preventDefault(); encerra(cancela.valor); }
+      else if (e.key === 'Enter' && document.activeElement &&
+               document.activeElement.className.indexOf('dlg-btn') < 0) {
+        e.preventDefault(); encerra(primario.valor);
+      }
+    }
+
+    botoes.forEach(function (b) {
+      var btn = document.createElement('button');
+      btn.className = 'dlg-btn' + (b.primario ? ' primario' : '');
+      btn.textContent = b.rotulo;
+      btn.addEventListener('click', function () { encerra(b.valor); });
+      linha.appendChild(btn);
+      if (!primeiroBtn || b.primario) primeiroBtn = btn;
+    });
+
+    caixa.appendChild(texto);
+    caixa.appendChild(linha);
+    fundo.appendChild(caixa);
+    fundo.addEventListener('mousedown', function (e) {
+      if (e.target === fundo) encerra(cancela.valor);
+    });
+    document.body.appendChild(fundo);
+    document.addEventListener('keydown', teclas, true);
+    if (primeiroBtn) primeiroBtn.focus();
+  });
+}
+function aviso(msg) {
+  return dialogo(msg, [{ rotulo: 'OK', valor: true, primario: true, cancela: true }]);
+}
+
+/* ================================================================= arquivo */
+function confirmaDescartar() {
+  if (!sujo) return Promise.resolve(true);
+  return dialogo('Tem alteração não salva. Descartar?', [
+    { rotulo: 'Descartar', valor: true },
+    { rotulo: 'Cancelar', valor: false, primario: true, cancela: true },
+  ]);
+}
+
+function carrega(dados) {
+  arquivo.path = dados.path;
+  arquivo.name = dados.name;
+  ed.value = dados.text;
+  marcaSujo(false);
+  atualizaTitulo();
+  atualizaContador();
+  ed.focus();
+  ed.setSelectionRange(0, 0);
+  ed.scrollTop = 0;
+  lembraRecente(dados.path);
+}
+
+function novoArquivo() {
+  confirmaDescartar().then(function (ok) {
+    if (!ok) return;
+    arquivo = { path: null, name: 'sem título.hyp' };
+    ed.value = '';
+    marcaSujo(false);
+    atualizaTitulo();
+    atualizaContador();
+    ed.focus();
+  });
+}
+
+function abrirDialogo() {
+  confirmaDescartar().then(function (ok) {
+    if (!ok) return;
+    rpc('file.openDialog').then(function (d) { if (d) carrega(d); })
+      .catch(function (e) { aviso('Não abriu: ' + e.message); });
+  });
+}
+
+function abrirCaminho(path) {
+  confirmaDescartar().then(function (ok) {
+    if (!ok) return;
+    rpc('file.openPath', { path: path }).then(carrega)
+      .catch(function (e) { aviso('Não abriu: ' + e.message); esqueceRecente(path); });
+  });
+}
+
+function salvar() {
+  if (!arquivo.path) return salvarComo();
+  var textoParaGravar = preparaTextoParaSalvar(ed.value, arquivo.name);
+  return rpc('file.save', { path: arquivo.path, text: textoParaGravar })
+    .then(function () { marcaSujo(false); })
+    .catch(function (e) { aviso('Não salvou: ' + e.message); });
+}
+
+function salvarComo() {
+  return rpc('file.saveDialog', { name: arquivo.name }).then(function (d) {
+    if (!d) return;
+    arquivo.path = d.path;
+    arquivo.name = d.name;
+    var textoParaGravar = preparaTextoParaSalvar(ed.value, d.name);
+    return rpc('file.save', { path: d.path, text: textoParaGravar }).then(function () {
+      marcaSujo(false);
+      atualizaTitulo();
+      lembraRecente(d.path);
+    });
+  }).catch(function (e) { aviso('Não salvou: ' + e.message); });
+}
+
+/* recentes (guardados nas settings) */
+function lembraRecente(path) {
+  if (!path) return;
+  var r = settings.ui.recent || [];
+  r = [path].concat(r.filter(function (p) { return p !== path; })).slice(0, 5);
+  settings.ui.recent = r;
+  settings.ui.lastFile = path;
+  salvaSettings();
+  montaMenu();
+}
+function esqueceRecente(path) {
+  settings.ui.recent = (settings.ui.recent || []).filter(function (p) { return p !== path; });
+  if (settings.ui.lastFile === path) settings.ui.lastFile = null;
+  salvaSettings();
+  montaMenu();
+}
+function salvaSettings() { rpc('settings.set', settings).catch(function () {}); }
+
+/* arrastar e soltar */
+document.addEventListener('dragover', function (e) {
+  e.preventDefault();
+  document.body.classList.add('arrastando');
+});
+document.addEventListener('dragleave', function (e) {
+  if (!e.relatedTarget) document.body.classList.remove('arrastando');
+});
+document.addEventListener('drop', function (e) {
+  e.preventDefault();
+  document.body.classList.remove('arrastando');
+  var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (!f) return;
+
+  // Imagem arrastada: embute direto como anexo no documento!
+  if (/\.(png|jpe?g|webp|gif|bmp)$/i.test(f.name)) {
+    var baseNome = f.name.replace(/\.[^/.]+$/, "");
+    insereAnexoImagem(f, baseNome).catch(function (err) {
+      aviso('Não foi possível anexar a imagem: ' + err.message);
+    });
+    return;
+  }
+
+  if (!/\.(md|txt|markdown|text|hyp|html|htm)$/i.test(f.name)) {
+    aviso('O Noty abre .hyp, .md, .txt e .html (ou arraste imagens para anexar).');
+    return;
+  }
+  confirmaDescartar().then(function (ok) {
+    if (!ok) return;
+    return f.text().then(function (texto) {
+      // O drop do navegador não entrega o caminho: entra como cópia sem salvar.
+      arquivo = { path: null, name: f.name };
+      ed.value = texto;
+      marcaSujo(true);
+      atualizaTitulo();
+      atualizaContador();
+    });
+  });
+});
+
+/* ================================================================= anexos e conversao hyp */
+function parseHypAnexos(src) {
+  var anexos = {};
+  var regex = /```hyp-anexo\s+([\w.\-]+)\s+([\w.\-\/+]+)\s*\n([\s\S]*?)```/gi;
+  var match;
+  while ((match = regex.exec(src)) !== null) {
+    var id = match[1].toLowerCase();
+    var mime = match[2];
+    var b64 = match[3].replace(/\s+/g, '');
+    anexos[id] = 'data:' + mime + ';base64,' + b64;
+  }
+  var limpo = src.replace(/```hyp-anexo[\s\S]*?```/gi, '').replace(/<!--\s*=====\s*ANEXOS HYP\s*=====\s*-->/gi, '');
+  return { anexos: anexos, textoLimpo: limpo };
+}
+
+function limpaTextoParaTxt(src) {
+  var t = src.replace(/```hyp-anexo[\s\S]*?```/gi, '');
+  t = t.replace(/<!--\s*=====\s*ANEXOS HYP\s*=====\s*-->/gi, '');
+  t = t.replace(/!\[([^\]]*)\]\(anexo:[^)\s]+\)/gi, '[$1]');
+  return t.trimEnd() + '\n';
+}
+
+function preparaTextoParaSalvar(src, nomeArquivo) {
+  var n = (nomeArquivo || '').toLowerCase();
+  if (n.endsWith('.html') || n.endsWith('.htm')) {
+    return geraHtmlAutocontido(src, nomeArquivo.replace(/\.[^/.]+$/, ""));
+  }
+  if (n.endsWith('.txt')) {
+    return limpaTextoParaTxt(src);
+  }
+  return src;
+}
+
+function quebraBase64(b64, cols) {
+  cols = cols || 76;
+  var partes = [];
+  for (var i = 0; i < b64.length; i += cols) {
+    partes.push(b64.slice(i, i + cols));
+  }
+  return partes.join('\n');
+}
+
+function processaArquivoImagem(blob) {
+  return new Promise(function (resolve, reject) {
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      var img = new Image();
+      img.onload = function () {
+        var maxW = 1920, maxH = 1920;
+        var w = img.width, h = img.height;
+        if (w > maxW || h > maxH) {
+          if (w > h) { h = Math.round(h * (maxW / w)); w = maxW; }
+          else { w = Math.round(w * (maxH / h)); h = maxH; }
+        }
+        var canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+
+        var mime = 'image/webp';
+        var dataUrl = canvas.toDataURL(mime, 0.82);
+        if (!dataUrl || !dataUrl.startsWith('data:image/webp')) {
+          mime = 'image/jpeg';
+          dataUrl = canvas.toDataURL(mime, 0.85);
+        }
+        var partes = dataUrl.split(',');
+        resolve({ b64: partes[1], mime: mime });
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+function insereAnexoImagem(blob, nomeBase) {
+  return processaArquivoImagem(blob).then(function (res) {
+    var ext = res.mime === 'image/webp' ? '.webp' : '.jpg';
+    var textoAtual = ed.value;
+    var num = 1;
+    var idBase = (nomeBase || 'imagem').replace(/[^a-zA-Z0-9_\-]/g, '').toLowerCase();
+    if (!idBase) idBase = 'imagem';
+    var id = idBase + '-' + num + ext;
+    while (textoAtual.toLowerCase().includes(id.toLowerCase())) {
+      num++;
+      id = idBase + '-' + num + ext;
+    }
+
+    var mdTag = '![' + (nomeBase || 'imagem') + '](anexo:' + id + ')';
+    var bloco = '\n```hyp-anexo ' + id + ' ' + res.mime + '\n' +
+                quebraBase64(res.b64, 76) + '\n```\n';
+
+    var a = ed.selectionStart, b = ed.selectionEnd;
+    var antes = ed.value.slice(0, a);
+    var depois = ed.value.slice(b);
+    ed.value = antes + mdTag + depois;
+    var novaPos = a + mdTag.length;
+    ed.setSelectionRange(novaPos, novaPos);
+
+    var cabecalhoAnexo = '<!-- ===== ANEXOS HYP ===== -->';
+    if (!ed.value.includes(cabecalhoAnexo)) {
+      ed.value = ed.value.trimEnd() + '\n\n' + cabecalhoAnexo + '\n' + bloco;
+    } else {
+      ed.value = ed.value.trimEnd() + '\n' + bloco;
+    }
+
+    marcaSujo(true);
+    atualizaContador();
+  });
+}
+
+// Colar imagem da area de transferencia (Ctrl+V)
+ed.addEventListener('paste', function (e) {
+  var items = (e.clipboardData || window.clipboardData) && (e.clipboardData || window.clipboardData).items;
+  if (!items) return;
+  for (var i = 0; i < items.length; i++) {
+    if (items[i].type.indexOf('image') !== -1) {
+      var f = items[i].getAsFile();
+      if (f) {
+        e.preventDefault();
+        insereAnexoImagem(f, 'imagem');
+        return;
+      }
+    }
+  }
+});
+
+/* ================================================================= markdown */
+function escapaHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function inlineMd(s, mapaAnexos) {
+  s = escapaHtml(s);
+  s = s.replace(/`([^`]+)`/g, function (_, c) { return '<code>' + c + '</code>'; });
+  s = s.replace(/\*\*([^*]+)\*\*|__([^_]+)__/g, function (_, a, b) { return '<b>' + (a || b) + '</b>'; });
+  s = s.replace(/\*([^*]+)\*|_([^_]+)_/g, function (_, a, b) { return '<i>' + (a || b) + '</i>'; });
+
+  // Imagens Markdown: ![alt](url)
+  s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, function (_, alt, url) {
+    var src = url;
+    if (url.startsWith('anexo:')) {
+      var id = url.slice(6).toLowerCase();
+      if (mapaAnexos && mapaAnexos[id]) src = mapaAnexos[id];
+    }
+    return '<img src="' + src + '" alt="' + alt + '" title="' + alt + '" style="max-width:100%; height:auto; border-radius:8px; margin:10px 0; box-shadow:0 4px 18px rgba(0,0,0,0.3); display:block;">';
+  });
+
+  // Links Markdown: [texto](url)
+  s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, function (_, txt, url) {
+    var href = url;
+    var downloadAttr = '';
+    if (url.startsWith('anexo:')) {
+      var id = url.slice(6).toLowerCase();
+      if (mapaAnexos && mapaAnexos[id]) {
+        href = mapaAnexos[id];
+        downloadAttr = ' download="' + escapaHtml(id) + '"';
+      }
+    }
+    return '<a href="' + href + '"' + downloadAttr + ' target="_blank" rel="noopener">' + txt + '</a>';
+  });
+
+  return s;
+}
+
+function renderMd(src) {
+  var parsed = parseHypAnexos(src);
+  var mapaAnexos = parsed.anexos;
+  var out = [], linhas = parsed.textoLimpo.split('\n');
+  var i = 0, lista = null;
+  function fechaLista() { if (lista) { out.push('</' + lista + '>'); lista = null; } }
+  while (i < linhas.length) {
+    var l = linhas[i];
+
+    var cerca = l.match(/^```/);
+    if (cerca) {
+      fechaLista();
+      var cod = [];
+      i++;
+      while (i < linhas.length && !/^```/.test(linhas[i])) { cod.push(linhas[i]); i++; }
+      i++;
+      out.push('<pre><code>' + escapaHtml(cod.join('\n')) + '</code></pre>');
+      continue;
+    }
+    var h = l.match(/^(#{1,6})\s+(.*)$/);
+    if (h) { fechaLista(); out.push('<h' + h[1].length + '>' + inlineMd(h[2], mapaAnexos) + '</h' + h[1].length + '>'); i++; continue; }
+    if (/^(\s*)([-*_])\s*\2\s*\2[\s\-*_]*$/.test(l)) { fechaLista(); out.push('<hr>'); i++; continue; }
+    var bq = l.match(/^>\s?(.*)$/);
+    if (bq) { fechaLista(); out.push('<blockquote>' + inlineMd(bq[1], mapaAnexos) + '</blockquote>'); i++; continue; }
+    var ul = l.match(/^\s*[-*+]\s+(.*)$/);
+    if (ul) {
+      if (lista !== 'ul') { fechaLista(); out.push('<ul>'); lista = 'ul'; }
+      out.push('<li>' + inlineMd(ul[1], mapaAnexos) + '</li>'); i++; continue;
+    }
+    var ol = l.match(/^\s*\d+[.)]\s+(.*)$/);
+    if (ol) {
+      if (lista !== 'ol') { fechaLista(); out.push('<ol>'); lista = 'ol'; }
+      out.push('<li>' + inlineMd(ol[1], mapaAnexos) + '</li>'); i++; continue;
+    }
+    if (!l.trim()) { fechaLista(); i++; continue; }
+
+    var par = [l];
+    i++;
+    while (i < linhas.length && linhas[i].trim() &&
+           !/^(#{1,6}\s|>|```|\s*[-*+]\s|\s*\d+[.)]\s)/.test(linhas[i])) { par.push(linhas[i]); i++; }
+    fechaLista();
+    out.push('<p>' + inlineMd(par.join(' '), mapaAnexos) + '</p>');
+  }
+  fechaLista();
+  return out.join('\n');
+}
+
+function geraHtmlAutocontido(src, titulo) {
+  var htmlCorpo = renderMd(src);
+  titulo = titulo || 'Documento Hyper';
+  return '<!DOCTYPE html>\n' +
+    '<html lang="pt-BR">\n' +
+    '<head>\n' +
+    '<meta charset="utf-8">\n' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
+    '<title>' + escapaHtml(titulo) + '</title>\n' +
+    '<style>\n' +
+    '  :root { color-scheme: dark light; }\n' +
+    '  body {\n' +
+    '    max-width: 760px; margin: 40px auto; padding: 0 24px;\n' +
+    '    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;\n' +
+    '    font-size: 16px; line-height: 1.75; color: #e0e6ed; background: #0f1412;\n' +
+    '  }\n' +
+    '  @media (prefers-color-scheme: light) {\n' +
+    '    body { color: #1e252b; background: #fdfdfd; }\n' +
+    '    code, pre { background: rgba(0,0,0,0.05) !important; }\n' +
+    '    blockquote { border-color: #2e7d32 !important; color: #555 !important; }\n' +
+    '  }\n' +
+    '  h1, h2, h3, h4 { margin: 1.6em 0 0.6em; line-height: 1.3; font-weight: 700; }\n' +
+    '  p, ul, ol, blockquote { margin-bottom: 1.2em; }\n' +
+    '  ul, ol { padding-left: 28px; }\n' +
+    '  li { margin-bottom: 0.3em; }\n' +
+    '  img { max-width: 100%; height: auto; border-radius: 9px; box-shadow: 0 6px 24px rgba(0,0,0,0.25); margin: 16px 0; display: block; }\n' +
+    '  code { font-family: "Cascadia Mono", Consolas, monospace; font-size: 0.9em; background: rgba(255,255,255,0.08); padding: 3px 6px; border-radius: 5px; }\n' +
+    '  pre { background: rgba(0,0,0,0.35); padding: 16px; border-radius: 8px; overflow-x: auto; margin: 16px 0; }\n' +
+    '  pre code { background: transparent; padding: 0; }\n' +
+    '  blockquote { border-left: 4px solid #8fd6a8; padding: 8px 18px; margin: 18px 0; color: #9bb0a4; background: rgba(143,214,168,0.05); border-radius: 0 8px 8px 0; }\n' +
+    '  a { color: #8fd6a8; text-decoration: none; font-weight: 500; } a:hover { text-decoration: underline; }\n' +
+    '  hr { border: none; border-top: 1px solid rgba(255,255,255,0.12); margin: 36px 0; }\n' +
+    '</style>\n' +
+    '</head>\n' +
+    '<body>\n' +
+    htmlCorpo + '\n' +
+    '</body>\n' +
+    '</html>\n';
+}
+
+/* formatar seleção (mantém o desfazer nativo via insertText) */
+function envolveSelecao(marca) {
+  var a = ed.selectionStart, b = ed.selectionEnd;
+  if (a === b) return;
+  var trecho = ed.value.slice(a, b);
+  ed.focus();
+  ed.setSelectionRange(a, b);
+  document.execCommand('insertText', false, marca + trecho + marca);
+  ed.setSelectionRange(a, a + (marca + trecho + marca).length);
+}
+
+/* ================================================================= paineis */
+function painel(id) { return document.getElementById(id); }
+function algumPainelAberto() {
+  return ['painel-tema', 'painel-preview', 'painel-sobre'].some(function (id) {
+    return painel(id).classList.contains('aberto');
+  });
+}
+function fechaPaineis() {
+  ['painel-tema', 'painel-preview', 'painel-sobre'].forEach(function (id) {
+    painel(id).classList.remove('aberto');
+  });
+  ed.focus();
+}
+
+function abrePreview() {
+  fechaPaineis();
+  document.getElementById('preview-md').innerHTML = renderMd(ed.value);
+  painel('painel-preview').classList.add('aberto');
+}
+document.getElementById('preview-fechar').onclick = fechaPaineis;
+document.getElementById('preview-md').addEventListener('click', function (e) {
+  var a = e.target.closest('a');
+  if (!a) return;
+  e.preventDefault();
+  rpc('app.openExternal', { url: a.href }).catch(function () {});
+});
+
+function abreSobre() {
+  fechaPaineis();
+  painel('painel-sobre').classList.add('aberto');
+}
+document.getElementById('sobre-fechar').onclick = fechaPaineis;
+
+/* ---------------- tema */
+var temaEd = document.getElementById('tema-editor');
+var temaTimer = null;
+function abreTema() {
+  fechaPaineis();
+  temaEd.value = temaAtual;
+  painel('painel-tema').classList.add('aberto');
+  temaEd.focus();
+}
+temaEd.addEventListener('input', function () {
+  clearTimeout(temaTimer);
+  temaTimer = setTimeout(function () { aplicaTema(temaEd.value); }, 250);
+});
+function aplicaTema(css) {
+  temaAtual = css;
+  document.getElementById('tema-do-usuario').textContent = css;
+}
+function salvaTema() {
+  aplicaTema(temaEd.value);
+  rpc('theme.write', { text: temaEd.value }).then(function () {
+    document.getElementById('tema-aviso').textContent = 'salvo';
+    setTimeout(function () {
+      document.getElementById('tema-aviso').textContent = 'aplica ao vivo enquanto digita';
+    }, 1600);
+  }).catch(function (e) { aviso('Não salvou o tema: ' + e.message); });
+}
+document.getElementById('tema-salvar').onclick = salvaTema;
+document.getElementById('tema-fechar').onclick = fechaPaineis;
+document.getElementById('tema-restaurar').onclick = function () {
+  dialogo('Voltar pro tema padrão? O CSS atual é substituído.', [
+    { rotulo: 'Restaurar', valor: true },
+    { rotulo: 'Cancelar', valor: false, primario: true, cancela: true },
+  ]).then(function (ok) {
+    if (!ok) return;
+    rpc('theme.default').then(function (d) {
+      temaEd.value = d.text;
+      aplicaTema(d.text);
+      salvaTema();
+    });
+  });
+};
+
+/* ================================================================= busca */
+var busca = document.getElementById('busca');
+var buscaCampo = document.getElementById('busca-campo');
+function abreBusca() {
+  fechaPaineis();
+  busca.classList.add('aberta');
+  var sel = ed.value.slice(ed.selectionStart, ed.selectionEnd);
+  if (sel && sel.length < 80 && !sel.includes('\n')) buscaCampo.value = sel;
+  buscaCampo.focus();
+  buscaCampo.select();
+  contaOcorrencias();
+}
+function fechaBusca() { busca.classList.remove('aberta'); ed.focus(); }
+function contaOcorrencias() {
+  var q = buscaCampo.value;
+  var el = document.getElementById('busca-cont');
+  if (!q) { el.textContent = ''; return; }
+  var n = ed.value.toLowerCase().split(q.toLowerCase()).length - 1;
+  el.textContent = n + '×';
+}
+function procura(recua) {
+  var q = buscaCampo.value;
+  if (!q) return;
+  var texto = ed.value.toLowerCase(), alvo = q.toLowerCase();
+  var pos;
+  if (recua) {
+    pos = texto.lastIndexOf(alvo, Math.max(0, ed.selectionStart - 1));
+    if (pos < 0) pos = texto.lastIndexOf(alvo);
+  } else {
+    pos = texto.indexOf(alvo, ed.selectionEnd);
+    if (pos < 0) pos = texto.indexOf(alvo);
+  }
+  if (pos < 0) return;
+  ed.focus();
+  ed.setSelectionRange(pos, pos + q.length);
+  rolaAteSelecao(pos);
+  buscaCampo.focus();
+}
+function rolaAteSelecao(pos) {
+  var antes = ed.value.slice(0, pos).split('\n').length - 1;
+  var lh = parseFloat(getComputedStyle(ed).lineHeight) || 24;
+  ed.scrollTop = Math.max(0, antes * lh - ed.clientHeight / 2);
+}
+buscaCampo.addEventListener('input', contaOcorrencias);
+buscaCampo.addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') { e.preventDefault(); procura(e.shiftKey); }
+  if (e.key === 'Escape') { e.preventDefault(); fechaBusca(); }
+});
+document.getElementById('busca-prox').onclick = function () { procura(false); };
+document.getElementById('busca-ant').onclick = function () { procura(true); };
+document.getElementById('busca-fechar').onclick = fechaBusca;
+
+/* ================================================================= ortografia */
+function aplicaOrtografia() {
+  var ligada = settings.ui.spellEnabled !== false;
+  ed.spellcheck = ligada;
+  ed.setAttribute('lang', settings.spellLang || 'pt-BR');
+  // Cutucada pro Chromium reavaliar os sublinhados.
+  var a = ed.selectionStart, b = ed.selectionEnd;
+  ed.blur(); ed.focus();
+  ed.setSelectionRange(a, b);
+}
+function trocaIdioma(lang) {
+  rpc('spell.set', { lang: lang }).then(function (r) {
+    settings.spellLang = lang;
+    aplicaOrtografia();
+    montaMenu();
+    if (!r || !r.restart) return;
+    dialogo('O corretor troca de idioma quando o app reinicia.\nReiniciar agora?' +
+            (sujo ? '\n\n(Atenção: tem alteração não salva!)' : ''), [
+      { rotulo: 'Reiniciar', valor: true, primario: !sujo },
+      { rotulo: 'Depois', valor: false, primario: !!sujo, cancela: true },
+    ]).then(function (ok) { if (ok) rpc('app.restart'); });
+  });
+}
+function ligaDesligaOrtografia() {
+  settings.ui.spellEnabled = !(settings.ui.spellEnabled !== false);
+  salvaSettings();
+  aplicaOrtografia();
+  montaMenu();
+}
+
+/* ================================================================= menu (Alt) */
+var menubar = document.getElementById('menubar');
+
+function defMenu() {
+  var spellOn = settings.ui.spellEnabled !== false;
+  var lang = settings.spellLang || 'pt-BR';
+  var wrap = settings.ui.wrap !== false;
+  var recentes = (settings.ui.recent || []).map(function (p) {
+    var nome = p.split(/[\\/]/).pop();
+    return { rotulo: nome, titulo: p, faz: function () { abrirCaminho(p); } };
+  });
+
+  return [
+    { nome: 'Arquivo', itens: [
+      { rotulo: 'Novo', tecla: 'Ctrl+N', faz: novoArquivo },
+      { rotulo: 'Abrir…', tecla: 'Ctrl+O', faz: abrirDialogo },
+      { rotulo: 'Salvar', tecla: 'Ctrl+S', faz: salvar },
+      { rotulo: 'Salvar como…', tecla: 'Ctrl+Shift+S', faz: salvarComo },
+      { sep: true },
+    ].concat(recentes.length ? recentes.concat([{ sep: true }]) : [], [
+      { rotulo: 'Sair', tecla: 'Alt+F4', faz: function () { rpc('app.exit'); } },
+    ]) },
+    { nome: 'Editar', itens: [
+      { rotulo: 'Desfazer', tecla: 'Ctrl+Z', faz: function () { ed.focus(); document.execCommand('undo'); } },
+      { rotulo: 'Refazer', tecla: 'Ctrl+Y', faz: function () { ed.focus(); document.execCommand('redo'); } },
+      { sep: true },
+      { rotulo: 'Localizar…', tecla: 'Ctrl+F', faz: abreBusca },
+      { rotulo: 'Selecionar tudo', tecla: 'Ctrl+A', faz: function () { ed.focus(); ed.select(); } },
+    ] },
+    { nome: 'Exibir', itens: [
+      { rotulo: 'Pré-visualizar Markdown', tecla: 'Ctrl+M', faz: abrePreview },
+      { rotulo: 'Quebra de linha', marca: wrap, faz: function () {
+          settings.ui.wrap = !wrap; salvaSettings(); aplicaWrap(); montaMenu();
+      } },
+    ] },
+    { nome: 'Ortografia', itens: [
+      { rotulo: 'Corretor ligado', marca: spellOn, faz: ligaDesligaOrtografia },
+      { sep: true },
+      { rotulo: 'Português (Brasil)', marca: lang === 'pt-BR', faz: function () { trocaIdioma('pt-BR'); } },
+      { rotulo: 'English (US)', marca: lang === 'en-US', faz: function () { trocaIdioma('en-US'); } },
+      { rotulo: 'Español', marca: lang === 'es', faz: function () { trocaIdioma('es'); } },
+      { rotulo: 'Français', marca: lang === 'fr', faz: function () { trocaIdioma('fr'); } },
+      { sep: true },
+      { rotulo: 'Como funciona?', faz: abreSobre },
+    ] },
+    { nome: 'Tema', itens: [
+      { rotulo: 'Editar tema (CSS livre)…', tecla: 'Ctrl+T', faz: abreTema },
+      { rotulo: 'Abrir pasta do perfil', faz: function () { rpc('app.openProfile'); } },
+    ] },
+    { nome: 'Ajuda', itens: [
+      { rotulo: 'Sobre o Noty', faz: abreSobre },
+      { rotulo: 'DevTools', tecla: 'F12', faz: function () { send({ type: 'devtools' }); } },
+    ] },
+  ];
+}
+
+function montaMenu() {
+  menubar.innerHTML = '';
+  defMenu().forEach(function (grupo) {
+    var top = document.createElement('div');
+    top.className = 'menu-top';
+    top.textContent = grupo.nome;
+
+    var drop = document.createElement('div');
+    drop.className = 'dropdown';
+    grupo.itens.forEach(function (item) {
+      if (item.sep) {
+        var s = document.createElement('div');
+        s.className = 'msep';
+        drop.appendChild(s);
+        return;
+      }
+      var mi = document.createElement('div');
+      mi.className = 'mi' + (item.marca === true ? ' marcado' : item.marca === false ? ' desmarcado' : '');
+      if (item.titulo) mi.title = item.titulo;
+      var r = document.createElement('span');
+      r.textContent = item.rotulo;
+      mi.appendChild(r);
+      if (item.tecla) {
+        var k = document.createElement('span');
+        k.className = 'tecla';
+        k.textContent = item.tecla;
+        mi.appendChild(k);
+      }
+      mi.addEventListener('click', function (e) {
+        e.stopPropagation();
+        fechaMenu();
+        item.faz();
+      });
+      drop.appendChild(mi);
+    });
+    top.appendChild(drop);
+
+    top.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var jaAtivo = top.classList.contains('ativo');
+      menubar.querySelectorAll('.menu-top').forEach(function (t) { t.classList.remove('ativo'); });
+      if (!jaAtivo) top.classList.add('ativo');
+    });
+    top.addEventListener('mouseenter', function () {
+      if (menubar.querySelector('.menu-top.ativo')) {
+        menubar.querySelectorAll('.menu-top').forEach(function (t) { t.classList.remove('ativo'); });
+        top.classList.add('ativo');
+      }
+    });
+    menubar.appendChild(top);
+  });
+}
+
+function menuAberto() { return menubar.classList.contains('aberta'); }
+function abreMenu() { montaMenu(); menubar.classList.add('aberta'); }
+function fechaMenu() {
+  menubar.classList.remove('aberta');
+  menubar.querySelectorAll('.menu-top').forEach(function (t) { t.classList.remove('ativo'); });
+  ed.focus();
+}
+document.addEventListener('click', function () {
+  menubar.querySelectorAll('.menu-top').forEach(function (t) { t.classList.remove('ativo'); });
+});
+
+/* ================================================================= wrap */
+function aplicaWrap() {
+  ed.classList.toggle('sem-quebra', settings.ui.wrap === false);
+}
+
+/* ================================================================= teclado */
+var altSozinho = false;
+
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Alt') { altSozinho = true; e.preventDefault(); return; }
+  altSozinho = false;
+
+  var k = (e.key || '').toLowerCase();
+  var temaAbertoFlag = painel('painel-tema').classList.contains('aberto');
+
+  if (k === 'escape') {
+    if (busca.classList.contains('aberta')) { fechaBusca(); return; }
+    if (algumPainelAberto()) { fechaPaineis(); return; }
+    if (menuAberto()) { fechaMenu(); return; }
+    return;
+  }
+  if (k === 'f12') { e.preventDefault(); send({ type: 'devtools' }); return; }
+
+  if (e.ctrlKey && !e.altKey) {
+    if (temaAbertoFlag && k === 's') { e.preventDefault(); salvaTema(); return; }
+    if (temaAbertoFlag) return;   // no painel de tema, o resto e digitacao normal
+
+    if (e.shiftKey && k === 's') { e.preventDefault(); salvarComo(); return; }
+    if (k === 's') { e.preventDefault(); salvar(); return; }
+    if (k === 'o') { e.preventDefault(); abrirDialogo(); return; }
+    if (k === 'n') { e.preventDefault(); novoArquivo(); return; }
+    if (k === 'f') { e.preventDefault(); abreBusca(); return; }
+    if (k === 'm') {
+      e.preventDefault();
+      if (painel('painel-preview').classList.contains('aberto')) fechaPaineis();
+      else abrePreview();
+      return;
+    }
+    if (k === 't') { e.preventDefault(); abreTema(); return; }
+    if (k === 'b' && usaMarkdown()) { e.preventDefault(); envolveSelecao('**'); return; }
+    if (k === 'i' && usaMarkdown()) { e.preventDefault(); envolveSelecao('*'); return; }
+  }
+
+  // Tab no editor insere tab de verdade em vez de pular de campo.
+  if (k === 'tab' && document.activeElement === ed && !e.ctrlKey && !e.altKey) {
+    e.preventDefault();
+    document.execCommand('insertText', false, '\t');
+  }
+});
+
+document.addEventListener('keyup', function (e) {
+  if (e.key !== 'Alt' || !altSozinho) return;
+  e.preventDefault();
+  if (menuAberto()) fechaMenu(); else abreMenu();
+});
+
+/* ================================================================= acoes do host */
+function executaAcao(acao) {
+  switch (acao) {
+    case 'save': salvar(); break;
+    case 'saveAs': salvarComo(); break;
+    case 'open': abrirDialogo(); break;
+    case 'md-bold': envolveSelecao('**'); break;
+    case 'md-italic': envolveSelecao('*'); break;
+    case 'md-code': envolveSelecao('`'); break;
+    case 'searchWeb': {
+      var sel = ed.value.slice(ed.selectionStart, ed.selectionEnd).trim();
+      if (sel) rpc('app.openExternal', { url: 'https://www.google.com/search?q=' + encodeURIComponent(sel) });
+      break;
+    }
+    case 'confirmExit':
+      // O host cancelou o fechar e mandou a pergunta pra ca.
+      dialogo('Tem alteração que não foi salva.', [
+        { rotulo: 'Salvar e sair', valor: 'salvar', primario: true },
+        { rotulo: 'Sair sem salvar', valor: 'sair' },
+        { rotulo: 'Ficar', valor: null, cancela: true },
+      ]).then(function (v) {
+        if (v === 'sair') rpc('app.exitForce');
+        else if (v === 'salvar') Promise.resolve(salvar()).then(function () {
+          if (!sujo) rpc('app.exitForce');   // "Salvar como" cancelado = fica
+        });
+      });
+      break;
+  }
+}
+
+/* ================================================================= boot */
+Promise.all([
+  rpc('app.info'),
+  rpc('settings.get'),
+  rpc('theme.read'),
+]).then(function (r) {
+  var info = r[0];
+  settings = r[1] || {};
+  if (!settings.ui) settings.ui = {};
+  settings.spellLang = info.spellLang;
+
+  document.getElementById('sobre-versao').textContent = 'v' + info.version;
+  aplicaTema((r[2] && r[2].text) || '');
+  aplicaWrap();
+  aplicaOrtografia();
+  montaMenu();
+  atualizaTitulo();
+  atualizaContador();
+
+  if (info.initialFile) {
+    abrirCaminho(info.initialFile);
+  } else if (settings.ui.lastFile) {
+    rpc('file.openPath', { path: settings.ui.lastFile })
+      .then(carrega)
+      .catch(function () { esqueceRecente(settings.ui.lastFile); });
+  }
+  ed.focus();
+}).catch(function (e) {
+  document.title = 'Noty';
+  console.error(e);
+});
+
+})();
+</script>
+</body>
+</html>

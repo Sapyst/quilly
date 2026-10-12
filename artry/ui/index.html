@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Artry</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="dark">
+
+<!-- ============================ TELA INICIAL ============================ -->
+<section id="home">
+  <header class="home-top">
+    <img src="icon.png" class="home-logo" alt="">
+    <span class="home-nome">Artry</span>
+    <button class="hbtn" id="home-abrir">Abrir arquivo…</button>
+    <button class="hbtn" id="home-config">Configurações</button>
+    <button class="hbtn" id="home-tema">Alternar tema</button>
+  </header>
+  <div id="cards"></div>
+</section>
+
+<!-- ============================ EDITOR ============================ -->
+<section id="editor" hidden>
+  <nav id="menubar"></nav>
+
+  <div id="tb-doc" class="toolbar">
+    <button class="tb tb-texto" data-cmd="Início" title="Tela Inicial / Documentos"><i data-ic="home"></i><span>Início</span></button>
+    <span class="sep"></span>
+    <button class="tb" data-cmd="Desfazer" title="Desfazer (Ctrl+Z)"><i data-ic="undo"></i></button>
+    <button class="tb" data-cmd="Refazer" title="Refazer (Ctrl+Y)"><i data-ic="redo"></i></button>
+    <button class="tb" data-cmd="Imprimir" title="Imprimir (Ctrl+P)"><i data-ic="print"></i></button>
+    <span class="sep"></span>
+    <select id="zoom" title="Zoom">
+      <option>50%</option><option>75%</option><option>90%</option><option selected>100%</option>
+      <option>125%</option><option>150%</option><option>200%</option>
+    </select>
+    <span class="sep"></span>
+    <select id="estilos" title="Estilos de parágrafo">
+      <option value="p">Texto normal</option><option value="titulo">Título</option>
+      <option value="subtitulo">Subtítulo</option><option value="t1">Título 1</option>
+      <option value="t2">Título 2</option><option value="t3">Título 3</option>
+    </select>
+    <span class="sep"></span>
+    <input id="fonte" list="fontes" title="Família da fonte" spellcheck="false">
+    <datalist id="fontes"></datalist>
+    <span class="sep"></span>
+    <button class="tb tb-letra" data-cmd="Diminuir fonte" title="Diminuir tamanho da fonte (Ctrl+Shift+,)">−</button>
+    <input id="tamanho" title="Tamanho da fonte" value="11">
+    <button class="tb tb-letra" data-cmd="Aumentar fonte" title="Aumentar tamanho da fonte (Ctrl+Shift+.)">+</button>
+    <span class="sep"></span>
+    <button class="tb" data-cmd="Negrito" data-estado="bold" title="Negrito (Ctrl+B)"><i data-ic="bold"></i></button>
+    <button class="tb" data-cmd="Itálico" data-estado="italic" title="Itálico (Ctrl+I)"><i data-ic="italic"></i></button>
+    <button class="tb" data-cmd="Sublinhado" data-estado="underline" title="Sublinhado (Ctrl+U)"><i data-ic="underline"></i></button>
+    <button class="tb" data-cmd="Tachado" data-estado="strikeThrough" title="Tachado"><i data-ic="strike"></i></button>
+    <button class="tb" data-cmd="Cor do texto" title="Cor do texto"><i data-ic="textcolor"></i></button>
+    <button class="tb" data-cmd="Cor de destaque" title="Cor de destaque"><i data-ic="highlight"></i></button>
+    <span class="sep"></span>
+    <button class="tb" data-cmd="Alinhar à Esquerda" data-alinha="left" title="Alinhar à esquerda (Ctrl+Shift+L)"><i data-ic="alignleft"></i></button>
+    <button class="tb" data-cmd="Centralizar" data-alinha="center" title="Centralizar (Ctrl+Shift+E)"><i data-ic="aligncenter"></i></button>
+    <button class="tb" data-cmd="Alinhar à Direita" data-alinha="right" title="Alinhar à direita (Ctrl+Shift+R)"><i data-ic="alignright"></i></button>
+    <button class="tb" data-cmd="Justificar" data-alinha="justify" title="Justificar (Ctrl+Shift+J)"><i data-ic="alignjustify"></i></button>
+    <div class="dropdown">
+      <button class="tb" id="bt-espaco" title="Espaçamento entre linhas"><i data-ic="linespacing"></i></button>
+      <div class="dd-lista" id="dd-espaco">
+        <div data-lh="1">1,0 (Simples)</div><div data-lh="1.15">1,15</div>
+        <div data-lh="1.5">1,5</div><div data-lh="2">2,0 (Duplo)</div>
+      </div>
+    </div>
+    <span class="sep"></span>
+    <button class="tb" data-cmd="Lista com marcadores" title="Lista com marcadores"><i data-ic="bulletlist"></i></button>
+    <button class="tb" data-cmd="Lista numerada" title="Lista numerada"><i data-ic="numberedlist"></i></button>
+    <button class="tb" data-cmd="Diminuir recuo" title="Diminuir recuo"><i data-ic="outdent"></i></button>
+    <button class="tb" data-cmd="Aumentar recuo" title="Aumentar recuo"><i data-ic="indent"></i></button>
+    <span class="sep"></span>
+    <button class="tb" data-cmd="Limpar Formatação" title="Limpar formatação (Ctrl+\)"><i data-ic="clearformat"></i></button>
+    <span class="sep"></span>
+    <button class="tb tb-texto" id="bt-pagina" data-cmd="Modo de Exibição" title="Alternar Modo de Folha"><i data-ic="page"></i><span>Página</span></button>
+    <button class="tb tb-texto" id="bt-regua" data-cmd="Régua" title="Exibir / Ocultar Réguas (Ctrl+R)"><i data-ic="ruler"></i><span>Régua</span></button>
+  </div>
+
+  <div id="tb-code" class="toolbar codebar" hidden>
+    <span class="code-rotulo">CÓDIGO:</span>
+    <button class="tb tb-texto" data-cmd="Ativar Código">Ativar Código</button>
+    <button class="tb tb-texto" data-cmd="Realçar Sintaxe">Realçar Sintaxe</button>
+    <button class="tb tb-texto" data-cmd="Tab 4 espaços">Tab → 4 espaços</button>
+    <button class="tb tb-texto" data-cmd="Comentário">Comentário</button>
+    <button class="tb tb-texto" data-cmd="Ir para linha">Ir à linha</button>
+    <button class="tb tb-texto" data-cmd="Quebra de linha" id="bt-quebra">Sem quebra</button>
+    <button class="tb tb-texto" data-cmd="Recarregar">Recarregar</button>
+    <span class="espaco"></span>
+    <button class="tb" data-cmd="Fechar barra de código" title="Fechar barra de código"><i data-ic="close"></i></button>
+  </div>
+
+  <div id="area">
+    <div id="linha-regua">
+      <div id="canto"><span></span></div>
+      <canvas id="regua-h" height="26"></canvas>
+    </div>
+    <div id="corpo">
+      <canvas id="regua-v" width="28"></canvas>
+      <div id="trabalho">
+        <div id="folha">
+          <div id="calha"></div>
+          <div id="doc" contenteditable="true" spellcheck="true"></div>
+        </div>
+        <div id="guia"></div>
+      </div>
+    </div>
+  </div>
+
+  <footer id="status">
+    <span id="st-info">Sem título</span>
+    <span id="st-pos">Ln 1, Col 1</span>
+    <span id="st-cod">UTF-8</span>
+  </footer>
+</section>
+
+<!-- menus flutuantes, diálogos -->
+<div id="menu-ctx" class="menu-flutuante" hidden></div>
+<div id="modal" hidden><div class="dlg" id="dlg"></div></div>
+<input type="color" id="cor-texto" hidden>
+<input type="color" id="cor-realce" value="#ffff00" hidden>
+<input type="color" id="cor-regua" hidden>
+
+<script src="icones.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Artry.Dark" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:colorPrimary">@color/artry_surface</item>
+        <item name="android:colorPrimaryDark">@color/artry_bg</item>
+        <item name="android:colorAccent">@color/artry_yellow</item>
+        <item name="android:windowBackground">@color/artry_bg</item>
+        <item name="android:textColorPrimary">@color/artry_text</item>
+        <item name="android:textColorSecondary">@color/artry_muted</item>
+        <item name="android:navigationBarColor">@color/artry_surface</item>
+        <item name="android:statusBarColor">@color/artry_bg</item>
+    </style>
+</resources>

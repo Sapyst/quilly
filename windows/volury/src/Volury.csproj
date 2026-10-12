@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <AssemblyName>Volury</AssemblyName>
+    <RootNamespace>Volury</RootNamespace>
+    <Product>Volury — editor de e-books</Product>
+    <Version>1.0.0</Version>
+    <ApplicationIcon>icon.ico</ApplicationIcon>
+
+    <!-- Exe autocontido: nunca quebra se o SDK .NET sumir depois. -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <DebugType>none</DebugType>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- UI do editor, embutida no exe. -->
+    <EmbeddedResource Include="ui\editor.html" LogicalName="Volury.ui.editor.html" />
+    <EmbeddedResource Include="ui\style.css"   LogicalName="Volury.ui.style.css" />
+    <EmbeddedResource Include="ui\app.js"      LogicalName="Volury.ui.app.js" />
+
+    <!-- Icones embutidos -->
+    <EmbeddedResource Include="icon.ico" LogicalName="Volury.icon.ico" />
+    <EmbeddedResource Include="icon.png" LogicalName="Volury.icon.png" />
+    <EmbeddedResource Include="hyp.ico"  LogicalName="Volury.hyp.ico" />
+    <EmbeddedResource Include="hyp.png"  LogicalName="Volury.hyp.png" />
+  </ItemGroup>
+
+</Project>

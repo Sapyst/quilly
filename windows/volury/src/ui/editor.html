@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Volury</title>
+  <style>/* __INLINE_CSS__ */</style>
+</head>
+<body>
+  <!-- ─────────────────── Toolbar ─────────────────── -->
+  <header class="toolbar">
+    <div class="toolbar-group">
+      <button id="btn-new" title="Novo EPUB (Ctrl+N)">📄 Novo</button>
+      <button id="btn-open" title="Abrir EPUB (Ctrl+O)">📂 Abrir</button>
+      <button id="btn-save" title="Salvar (Ctrl+S)">💾 Salvar</button>
+      <button id="btn-save-as" title="Salvar como...">💾 Salvar como</button>
+    </div>
+    <div class="toolbar-divider"></div>
+    <div class="toolbar-group">
+      <button id="btn-import-hyp" title="Importar .hyp (Noty)">📥 .hyp</button>
+      <button id="btn-add-image" title="Adicionar imagem">🖼️ Imagem</button>
+      <button id="btn-add-css" title="Adicionar folha de estilos">🎨 CSS</button>
+    </div>
+    <div class="toolbar-divider"></div>
+    <div class="toolbar-group">
+      <button id="btn-toc" title="Gerar sumário">📑 TOC</button>
+      <button id="btn-validate" title="Validar EPUB">✓ Validar</button>
+      <button id="btn-export" title="Exportar EPUB">📦 Exportar</button>
+    </div>
+    <div class="toolbar-spacer"></div>
+    <div class="toolbar-group">
+      <button id="btn-metadata" title="Metadados do livro">📖 Metadata</button>
+    </div>
+  </header>
+
+  <!-- ─────────────────── Main Layout ─────────────────── -->
+  <div class="main-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <span class="sidebar-title">Capítulos</span>
+        <button id="btn-add-chapter" class="sidebar-btn" title="Adicionar capítulo">+</button>
+      </div>
+      <ul id="chapter-list" class="chapter-list"></ul>
+
+      <div class="sidebar-header" style="margin-top:16px;">
+        <span class="sidebar-title">Recursos</span>
+      </div>
+      <ul id="resource-list" class="resource-list"></ul>
+    </aside>
+
+    <!-- Editor -->
+    <main class="editor-area">
+      <!-- Format bar (WYSIWYG) -->
+      <div class="format-bar" id="format-bar">
+        <button data-cmd="bold" title="Negrito (Ctrl+B)"><b>B</b></button>
+        <button data-cmd="italic" title="Itálico (Ctrl+I)"><i>I</i></button>
+        <button data-cmd="underline" title="Sublinhado (Ctrl+U)"><u>U</u></button>
+        <span class="format-divider"></span>
+        <select id="heading-select" title="Tipo de bloco">
+          <option value="p">Parágrafo</option>
+          <option value="h1">Título 1</option>
+          <option value="h2">Título 2</option>
+          <option value="h3">Título 3</option>
+          <option value="blockquote">Citação</option>
+        </select>
+        <span class="format-divider"></span>
+        <button data-cmd="insertUnorderedList" title="Lista">☰</button>
+        <button data-cmd="insertOrderedList" title="Lista numerada">1.</button>
+        <button data-cmd="createLink" title="Inserir link">🔗</button>
+        <span class="format-divider"></span>
+        <div class="view-toggle">
+          <button id="btn-view-wysiwyg" class="active" title="Editor Visual">Visual</button>
+          <button id="btn-view-code" title="Editor de Código">Código</button>
+        </div>
+      </div>
+
+      <!-- WYSIWYG editor -->
+      <div id="wysiwyg-editor" class="wysiwyg-editor" contenteditable="true" spellcheck="true"></div>
+
+      <!-- Code editor -->
+      <textarea id="code-editor" class="code-editor" spellcheck="false" style="display:none;"></textarea>
+
+      <!-- Welcome screen -->
+      <div id="welcome-screen" class="welcome-screen">
+        <div class="welcome-content">
+          <div class="welcome-icon">V</div>
+          <h1>Volury</h1>
+          <p>Editor de e-books para a Quilly Suite</p>
+          <div class="welcome-actions">
+            <button id="welcome-new">📄 Novo EPUB</button>
+            <button id="welcome-open">📂 Abrir EPUB</button>
+            <button id="welcome-import">📥 Importar .hyp</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Status bar -->
+  <footer class="status-bar">
+    <span id="status-text">Pronto</span>
+    <span id="word-count"></span>
+  </footer>
+
+  <!-- Metadata Modal -->
+  <div id="metadata-modal" class="modal" style="display:none;">
+    <div class="modal-content">
+      <h2>Metadados do Livro</h2>
+      <label>Título<input type="text" id="meta-title"/></label>
+      <label>Autor<input type="text" id="meta-author"/></label>
+      <label>Idioma<input type="text" id="meta-language" placeholder="pt"/></label>
+      <label>Descrição<textarea id="meta-description" rows="3"></textarea></label>
+      <div class="modal-actions">
+        <button id="meta-save" class="btn-primary">Salvar</button>
+        <button id="meta-cancel" class="btn-secondary">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Validation Modal -->
+  <div id="validation-modal" class="modal" style="display:none;">
+    <div class="modal-content">
+      <h2>Validação EPUB</h2>
+      <ul id="validation-list"></ul>
+      <div class="modal-actions">
+        <button id="validation-close" class="btn-secondary">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>/* __INLINE_JS__ */</script>
+</body>
+</html>

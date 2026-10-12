@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quilly Suite</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app-container">
+    <!-- Sidebar -->
+    <aside id="sidebar">
+      <div class="brand">
+        <div class="brand-text">
+          <span class="logo-q">Q</span><span class="logo-rest">uilly</span>
+          <span class="logo-suite">Suite</span>
+        </div>
+      </div>
+
+      <nav class="nav-menu">
+        <button class="nav-item active" data-tab="tab-apps">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+          <span>Aplicativos</span>
+        </button>
+
+        <button class="nav-item" data-tab="tab-files">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+          <span>Arquivos</span>
+        </button>
+
+        <button class="nav-item" data-tab="tab-settings">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          <span>Ajustes</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button id="btn-open-suite" class="btn-sidebar-action" title="Abrir a pasta onde a suíte guarda seus dados">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+          <span>Pasta da suíte</span>
+        </button>
+        <div class="version-tag">Arch Quilly v1.0 · .hyp v2</div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main id="main-content">
+      <header id="topbar">
+        <div class="topbar-search">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input type="text" id="search-input" placeholder="Buscar aplicativos ou arquivos...">
+        </div>
+        <div class="topbar-actions">
+          <button id="btn-refresh" class="btn-icon" title="Atualizar dados">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="tab-content active" id="tab-apps">
+        <div class="content-header">
+          <h2>Aplicativos da sua Suite</h2>
+          <p class="subtitle">Seus aplicativos criativos. Eles vêm com a Arch Quilly e se atualizam junto com o sistema (pacman).</p>
+        </div>
+        <div class="apps-grid" id="apps-grid">
+          <!-- Renderizado via JS -->
+        </div>
+      </div>
+
+      <div class="tab-content" id="tab-files">
+        <div class="content-header">
+          <h2>Arquivos e Documentos</h2>
+          <p class="subtitle">Acesse seus documentos recentes criados ou abertos no Noty e Artry. Clique com botão direito para opções.</p>
+        </div>
+        <div class="files-container" id="files-container">
+          <!-- Renderizado via JS -->
+        </div>
+      </div>
+
+      <div class="tab-content" id="tab-settings">
+        <div class="content-header">
+          <h2>Ajustes da Quilly Suite</h2>
+          <p class="subtitle">Onde a suíte está e onde ela guarda seus dados.</p>
+        </div>
+        <div class="settings-card">
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>Pastas da suíte</h3>
+              <p>Os aplicativos ficam instalados no sistema (pacman). Configurações, temas e histórico de cada app ficam na pasta de dados abaixo.</p>
+              <div class="setting-path" id="suite-path-display">Carregando…</div>
+            </div>
+            <div class="setting-controls">
+              <button id="btn-change-suite-dir" class="btn-secondary">Abrir pasta da instalação</button>
+              <button id="btn-open-suite-dir" class="btn-secondary">Abrir pasta de dados</button>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>Padrão Hyper Doc (.hyp v2)</h3>
+              <p>Formato de documento universal da Quilly Suite: leve como texto puro, rico e autocontido com imagens embutidas.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Menu de Contexto Customizado para Arquivos -->
+  <div id="file-context-menu" class="context-menu">
+    <div class="ctx-item" id="ctx-open-noty">
+      <img src="assets/noty.png" width="16" height="16">
+      <span>Abrir no Noty</span>
+    </div>
+    <div class="ctx-item" id="ctx-open-artry">
+      <img src="assets/artry.png" width="16" height="16">
+      <span>Abrir no Artry</span>
+    </div>
+    <div class="ctx-item" id="ctx-open-volury">
+      <img src="assets/volury.png" width="16" height="16">
+      <span>Abrir no Volury</span>
+    </div>
+    <div class="ctx-item" id="ctx-open-array">
+      <img src="assets/array.png" width="16" height="16">
+      <span>Abrir no Array</span>
+    </div>
+    <div class="ctx-item" id="ctx-open-default">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+      <span>Abrir com o app padrão</span>
+    </div>
+    <div class="ctx-divider"></div>
+    <div class="ctx-item" id="ctx-show-explorer">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+      <span>Mostrar na pasta</span>
+    </div>
+    <div class="ctx-divider"></div>
+    <div class="ctx-item danger" id="ctx-remove-recent">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+      <span>Remover da lista</span>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
