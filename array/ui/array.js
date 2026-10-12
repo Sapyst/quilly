@@ -64,6 +64,7 @@
 	// "New" do menu Layer (mesmo nome do File > New): tratado pelo pai
 	const MENU_SHORTCUTS_BY_PARENT = { 'Layer/New': 'Ctrl+Shift+N' };
 	const MENU_HIDE = new Set(['Open Test Template', 'Open from Webcam', 'Quick Save', 'Quick Load']);
+	const MENU_RENAME = { 'Composition': 'Blending Mode' };
 
 	// ---------- utilidades ----------
 	const $ = (s) => document.querySelector(s);
@@ -407,6 +408,7 @@
 				if (!nameEl) continue;
 				const name = nameEl.textContent.trim();
 				if (MENU_HIDE.has(name)) { a.parentElement.remove(); continue; }
+				if (MENU_RENAME[name]) nameEl.textContent = MENU_RENAME[name];
 				let label = MENU_SHORTCUTS_BY_PARENT[parent + '/' + name];
 				if (label === undefined) label = MENU_SHORTCUTS[name];
 				if (label === undefined) continue;
@@ -543,14 +545,79 @@
 		});
 	}
 
+	// ---------- painel de camadas: modo de mesclagem e opacidade (como no Photoshop) ----------
+	const BLENDS = [['Normal', 'source-over'], ['Multiply', 'multiply'], ['Screen', 'screen'], ['Overlay', 'overlay'],
+		['Darken', 'darken'], ['Lighten', 'lighten'], ['Color Dodge', 'color-dodge'], ['Color Burn', 'color-burn'],
+		['Hard Light', 'hard-light'], ['Soft Light', 'soft-light'], ['Difference', 'difference'], ['Exclusion', 'exclusion'],
+		['Hue', 'hue'], ['Saturation', 'saturation'], ['Color', 'color'], ['Luminosity', 'luminosity']];
+	// uma ação no histórico do miniPaint (do/undo trocam campos da camada): entra no Ctrl+Z como as outras
+	function layerAction(id, changes, description) {
+		const layer = L.get_layer(id);
+		const before = {};
+		for (const k in changes) before[k] = layer ? layer[k] : undefined;
+		const apply = (vals) => {
+			const l = L.get_layer(id);
+			if (!l) return;
+			Object.assign(l, vals);
+			cfg.need_render = true;
+			G.GUI_layers.render_layers();
+			G.GUI_details.render_details();
+			refreshBlendRow();
+		};
+		return {
+			action_id: 'array_layer_' + Object.keys(changes).join('_'), action_description: description,
+			is_done: false, memory_estimate: 0, database_estimate: 0,
+			async do() { apply(changes); this.is_done = true; },
+			async undo() { apply(before); this.is_done = false; },
+			free() {},
+		};
+	}
+	function refreshBlendRow() {
+		const sel = $('#array_blend_mode'), op = $('#array_blend_opacity');
+		if (!sel || !op) return;
+		const l = cfg.layer;
+		sel.disabled = op.disabled = !l;
+		if (!l) return;
+		const comp = l.composition || 'source-over';
+		if (![...sel.options].some((o) => o.value === comp)) {
+			const o = document.createElement('option');
+			o.value = comp; o.textContent = comp; sel.appendChild(o);     // modo fora da lista (ex.: xor do diálogo)
+		}
+		sel.value = comp;
+		if (document.activeElement !== op) op.value = Math.round(l.opacity == null ? 100 : l.opacity);
+	}
+	function blendRow() {
+		const sel = $('#array_blend_mode'), op = $('#array_blend_opacity');
+		if (!sel || !op) return;
+		for (const [name, value] of BLENDS) {
+			const o = document.createElement('option');
+			o.value = value; o.textContent = name; sel.appendChild(o);
+		}
+		sel.addEventListener('change', () => {
+			if (!cfg.layer) return;
+			State.do_action(layerAction(cfg.layer.id, { composition: sel.value }, 'Blending mode'));
+			status('Blending mode: ' + sel.options[sel.selectedIndex].textContent);
+		});
+		op.addEventListener('change', () => {
+			if (!cfg.layer) return;
+			const v = Math.max(0, Math.min(100, parseInt(op.value, 10) || 0));
+			op.value = v;
+			State.do_action(layerAction(cfg.layer.id, { opacity: v }, 'Layer opacity'));
+		});
+		// a lista é redesenhada pelo miniPaint a cada mudança: acompanhamos
+		const orig = G.GUI_layers.render_layers.bind(G.GUI_layers);
+		G.GUI_layers.render_layers = function (...a) { const r = orig(...a); refreshBlendRow(); return r; };
+		refreshBlendRow();
+	}
+
 	// ---------- histórico -> "há alterações" ----------
 	function trackChanges() {
 		const orig = State.do_action.bind(State);
 		const soTroca = (act) => /activate_tool/i.test(String(act && (act.action_id || (act.constructor && act.constructor.name))));
-		State.do_action = async function (...a) { const r = await orig(...a); if (!soTroca(a[0])) markDirty(); return r; };
+		State.do_action = async function (...a) { const r = await orig(...a); if (!soTroca(a[0])) markDirty(); refreshBlendRow(); return r; };
 		for (const fn of ['undo', 'redo']) {
 			const o = State[fn].bind(State);
-			State[fn] = function (...a) { const r = o(...a); markDirty(); return r; };
+			State[fn] = async function (...a) { const r = await o(...a); markDirty(); refreshBlendRow(); return r; };
 		}
 	}
 
@@ -564,6 +631,7 @@
 		viewEvents();
 		hostEvents();
 		trackChanges();
+		blendRow();
 		// abrir/salvar e ajuda: os nossos no lugar dos do miniPaint
 		mod('file/open').open_file = () => send({ type: 'open-dialog' });
 		mod('file/save').save = saveAs;

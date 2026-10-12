@@ -56,6 +56,12 @@ selection, brushes, clone stamp, text, shapes, gradients, effects, history. Arra
 [Pixelorama](https://github.com/Orama-Interactive/Pixelorama)'s flat dark look), the keymap, the tool bar order,
 the system open/save dialogs and the `.array` format (miniPaint's JSON with the layers intact).
 
+Layers work the Photoshop way: **blending mode and opacity sit at the top of the Layers panel** (Normal, Multiply,
+Screen, Overlay, Darken, Lighten, Color Dodge/Burn, Hard/Soft Light, Difference, Exclusion, Hue, Saturation, Color,
+Luminosity), nine effects (blur, brightness, contrast, grayscale, hue, negative, saturate, sepia, shadow) are
+non-destructive layer effects you can edit or remove later, image layers keep their original pixels when resized
+until you convert them to raster, and text and shapes stay vector until then.
+
 | Key | Tool | Key | Tool |
 |---|---|---|---|
 | `V` | Move | `S` | Clone Stamp |

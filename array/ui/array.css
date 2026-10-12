@@ -212,6 +212,14 @@ body.array-zoom.array-zoom-out #main_wrapper, body.array-zoom.array-zoom-out #ca
 .block.details input[type="number"], .block.details select, .block.details button { height: 24px; }
 .block.details .row { margin-bottom: 5px; }
 
+/* blending mode + opacity row (array.js) */
+.array-blend { display: flex; align-items: center; gap: 6px; padding: 2px 8px 0 8px; }
+.array-blend select { flex: 1; min-width: 0; height: 24px; padding: 2px 4px; }
+.array-blend label { display: flex; align-items: center; margin: 0; }
+.array-blend input { width: 46px; height: 24px; padding: 2px 4px; }
+.array-blend span { color: var(--text-color-muted); font-size: 11px; margin-left: 3px; }
+.array-blend select:disabled, .array-blend input:disabled { opacity: 0.4; }
+
 /* layers list */
 .layers_list .layer_name {
 	background: var(--area-background-color);
