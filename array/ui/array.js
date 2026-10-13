@@ -232,7 +232,13 @@
 		const za = preview.zoom_auto.bind(preview);
 		preview.zoom_auto = function (...a) { const r = za(...a); fitZoom = cfg.ZOOM; return r; };
 		const saa = tools.show_action_attributes.bind(tools);
-		tools.show_action_attributes = function (...a) { const r = saa(...a); relayout(); return r; };
+		const barra = $('#action_attributes');
+		tools.show_action_attributes = function (...a) {
+			const r = saa(...a);
+			if (barra) { barra.classList.remove('array-swap'); void barra.offsetWidth; barra.classList.add('array-swap'); }
+			relayout();
+			return r;
+		};
 		new ResizeObserver(relayout).observe($('#main_wrapper'));
 	}
 
@@ -469,13 +475,225 @@
 		const h = document.querySelector('.block h2.toggle[data-target="' + target + '"]');
 		if (h) h.click();
 	}
-	function toggleLayers() {
-		const b = $('.sidebar_right .block.layers');
-		if (b) b.style.display = b.style.display === 'none' ? '' : 'none';
-	}
+	function toggleLayers() { showPanel('layers', panelEl('layers').classList.contains('hidden-panel')); }
+	const motion = () => window.matchMedia('(prefers-reduced-motion: no-preference)').matches;
 	function togglePanels() {
-		document.body.classList.toggle('array-panels-hidden');
+		const alvos = [...document.querySelectorAll('.array-dock, .array-floating')];
+		const esconder = !document.body.classList.contains('array-panels-hidden');
+		if (!motion()) { document.body.classList.toggle('array-panels-hidden'); relayout(); return; }
+		if (esconder) {
+			Promise.all(alvos.map((el) => el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(0.985)' }], { duration: 140, easing: 'ease-out' }).finished))
+				.then(() => { document.body.classList.add('array-panels-hidden'); relayout(); });
+		} else {
+			document.body.classList.remove('array-panels-hidden');
+			relayout();
+			for (const el of document.querySelectorAll('.array-dock, .array-floating'))
+				el.animate([{ opacity: 0, transform: 'scale(0.985)' }, { opacity: 1, transform: 'none' }], { duration: 160, easing: 'ease-out' });
+		}
+	}
+	// abrir/fechar painel (o miniPaint troca display na hora; a gente anima a altura em volta disso)
+	function panelToggleMotion() {
+		document.addEventListener('click', (e) => {
+			const h = e.target.closest('.array-panel > h2.toggle');
+			if (!h || !motion() || suppressClick) return;
+			const alvo = document.getElementById(h.dataset.target);
+			if (!alvo) return;
+			if (alvo.classList.contains('hidden')) {           // acabou de fechar: reabre só pra animar e fecha de novo
+				alvo.classList.remove('hidden');
+				const altura = alvo.offsetHeight;
+				alvo.style.overflow = 'hidden';
+				alvo.animate([{ height: altura + 'px', opacity: 1 }, { height: '0px', opacity: 0 }], { duration: 150, easing: 'ease-out' })
+					.finished.then(() => { alvo.classList.add('hidden'); alvo.style.overflow = ''; relayout(); });
+			} else {                                            // acabou de abrir
+				const altura = alvo.offsetHeight;
+				alvo.style.overflow = 'hidden';
+				alvo.animate([{ height: '0px', opacity: 0 }, { height: altura + 'px', opacity: 1 }], { duration: 170, easing: 'ease-out' })
+					.finished.then(() => { alvo.style.overflow = ''; relayout(); });
+			}
+		});
+	}
+
+	// ---------- painéis acopláveis: arrastar pelo cabeçalho, ímã nas docas, flutuar, menu Window ----------
+	// Os painéis são os blocos do miniPaint (ids e eventos intactos); só mudam de pai no DOM. Um clique no
+	// cabeçalho continua sendo o abrir/fechar do miniPaint; arrastar além de 6 px vira "desplugar".
+	const PANELS = { tools: 'Tools', navigator: 'Navigator', color: 'Color', info: 'Info', properties: 'Properties', layers: 'Layers' };
+	const LAYOUT_PADRAO = { left: ['tools'], right: ['navigator', 'color', 'info', 'properties', 'layers'], floating: {}, hidden: [] };
+	const panelEl = (name) => document.querySelector('.array-panel[data-panel="' + name + '"]');
+	const dockEl = (side) => document.getElementById('array_dock_' + side);
+	let drag = null, suppressClick = false, slot = null;
+	function floatPanel(p, x, y) {
+		document.body.appendChild(p);
+		p.classList.add('array-floating');
+		p.style.left = Math.round(x) + 'px'; p.style.top = Math.round(y) + 'px';
+	}
+	function unfloat(p) { p.classList.remove('array-floating'); p.style.left = p.style.top = ''; }
+	function clampFloating(p) {
+		const r = p.getBoundingClientRect(), W = window.innerWidth, H = window.innerHeight;
+		let x = parseFloat(p.style.left) || r.left, y = parseFloat(p.style.top) || r.top;
+		if (x + r.width > W - 4) x = W - 4 - r.width; if (y + r.height > H - 4) y = H - 4 - r.height;
+		if (x < 4) x = 4; if (y < 34) y = 34;
+		if (Math.abs(x - 4) < 14) x = 4; if (Math.abs(x + r.width - (W - 4)) < 14) x = W - 4 - r.width;   // ímã nas bordas da janela
+		p.style.left = Math.round(x) + 'px'; p.style.top = Math.round(y) + 'px';
+	}
+	function findSlot(x, y, dragged) {
+		for (const side of ['left', 'right']) {
+			const d = dockEl(side), r = d.getBoundingClientRect();
+			const zona = d.childElementCount ? 28 : 36;
+			const dentro = x >= r.left - zona && x <= r.right + zona && y >= r.top - 10 && y <= r.bottom + 10;
+			const borda = !d.childElementCount && (side === 'left' ? x < 44 : x > window.innerWidth - 44);
+			if (!dentro && !borda) continue;
+			const filhos = [...d.children].filter((c) => c !== dragged && c.classList.contains('array-panel'));
+			let index = filhos.length;
+			for (let i = 0; i < filhos.length; i++) {
+				const fr = filhos[i].getBoundingClientRect();
+				if (y < fr.top + fr.height / 2) { index = i; break; }
+			}
+			return { dock: d, side, before: filhos[index] || null };
+		}
+		return null;
+	}
+	function showSlot(target) {
+		if (!slot) { slot = document.createElement('div'); slot.className = 'array-slot'; }
+		if (!target) { slot.classList.remove('on'); if (slot.parentElement) slot.remove(); return; }
+		if (slot.parentElement !== target.dock || slot.nextElementSibling !== target.before) {
+			target.dock.insertBefore(slot, target.before);
+		}
+		requestAnimationFrame(() => slot.classList.add('on'));
+	}
+	function startDrag(e) {
+		drag.moved = true; suppressClick = true;
+		const p = drag.panel, r = drag.rect;
+		drag.dx = drag.startX - r.left; drag.dy = drag.startY - r.top;
+		try { window.getSelection().removeAllRanges(); } catch (err) { /* sem seleção */ }
+		floatPanel(p, r.left, r.top);
+		p.classList.add('array-lift');
+		document.body.classList.add('array-dragging');
+	}
+	function moveDrag(e) {
+		const p = drag.panel;
+		p.style.left = Math.round(e.clientX - drag.dx) + 'px'; p.style.top = Math.round(e.clientY - drag.dy) + 'px';
+		drag.target = findSlot(e.clientX, e.clientY, p);
+		showSlot(drag.target);
+	}
+	function endDrag(e) {
+		const p = drag.panel, t = drag.target;
+		document.body.classList.remove('array-dragging');
+		p.classList.remove('array-lift');
+		showSlot(null);
+		if (t) {
+			t.dock.insertBefore(p, t.before);
+			unfloat(p);
+			p.classList.add('array-attach');
+			setTimeout(() => p.classList.remove('array-attach'), 260);
+			status(PANELS[p.dataset.panel] + ' attached to the ' + t.side + ' dock');
+		} else {
+			clampFloating(p);
+			status(PANELS[p.dataset.panel] + ' floating');
+		}
+		saveLayout();
 		relayout();
+		setTimeout(() => { suppressClick = false; }, 0);   // o clique da soltura (se vier) é síncrono; depois disso, nada a engolir
+	}
+	function dockEvents() {
+		document.addEventListener('mousedown', (e) => {
+			if (e.button !== 0) return;
+			const grip = e.target.closest('.array-panel > h2.array-grip');
+			if (!grip || e.target.closest('button, input, select, a')) return;
+			drag = { panel: grip.parentElement, startX: e.clientX, startY: e.clientY, moved: false, rect: grip.parentElement.getBoundingClientRect(), target: null };
+		}, true);
+		window.addEventListener('mousemove', (e) => {
+			if (!drag) return;
+			if (!drag.moved) {
+				if (Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) < 6) return;
+				startDrag(e);
+			}
+			e.preventDefault();
+			moveDrag(e);
+		}, true);
+		window.addEventListener('mouseup', () => {
+			if (!drag) return;
+			if (drag.moved) endDrag();
+			drag = null;
+		}, true);
+		document.addEventListener('click', (e) => {         // depois de arrastar, o clique não abre/fecha o painel
+			if (suppressClick && e.target.closest('.array-panel > h2')) { e.stopImmediatePropagation(); e.preventDefault(); }
+			suppressClick = false;
+		}, true);
+		window.addEventListener('resize', () => document.querySelectorAll('.array-floating').forEach(clampFloating));
+	}
+	function layoutAtual() {
+		const l = { left: [], right: [], floating: {}, hidden: [] };
+		for (const side of ['left', 'right']) l[side] = [...dockEl(side).children].filter((c) => c.dataset.panel).map((c) => c.dataset.panel);
+		for (const p of document.querySelectorAll('.array-floating')) l.floating[p.dataset.panel] = [parseFloat(p.style.left) || 0, parseFloat(p.style.top) || 0];
+		l.hidden = [...document.querySelectorAll('.array-panel.hidden-panel')].map((p) => p.dataset.panel);
+		return l;
+	}
+	function saveLayout() { try { localStorage.setItem('array.layout', JSON.stringify(layoutAtual())); } catch (e) { /* sem storage */ } logPanels(); }
+	// em ARCH_DEV o console vai pro terminal: posição dos cabeçalhos (pra testes automatizados e depuração)
+	function logPanels() {
+		const pos = {};
+		for (const name in PANELS) { const h = panelEl(name) && panelEl(name).querySelector('h2'); if (h) { const r = h.getBoundingClientRect(); pos[name] = [Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2)]; } }
+		console.log('[array] panels ' + JSON.stringify(pos) + ' view ' + window.innerWidth + 'x' + window.innerHeight);
+	}
+	function applyLayout(l) {
+		for (const side of ['left', 'right']) for (const name of l[side] || []) { const p = panelEl(name); if (p) { unfloat(p); dockEl(side).appendChild(p); } }
+		for (const name in (l.floating || {})) { const p = panelEl(name); if (p) { floatPanel(p, l.floating[name][0], l.floating[name][1]); clampFloating(p); } }
+		for (const name in PANELS) showPanel(name, !(l.hidden || []).includes(name), false);
+		relayout();
+	}
+	function loadLayout() {
+		let l = null;
+		try { l = JSON.parse(localStorage.getItem('array.layout') || 'null'); } catch (e) { l = null; }
+		if (l && Array.isArray(l.left) && Array.isArray(l.right)) applyLayout(l);
+	}
+	function resetLayout() { applyLayout(JSON.parse(JSON.stringify(LAYOUT_PADRAO))); saveLayout(); status('Default layout'); }
+	function showPanel(name, on, save = true) {
+		const p = panelEl(name);
+		if (!p) return;
+		p.classList.toggle('hidden-panel', !on);
+		if (save) { saveLayout(); relayout(); }
+	}
+	// menu "Window": mostrar/esconder painéis, restaurar o padrão
+	function windowMenu() {
+		const bar = document.querySelector('#main_menu ul.menu_bar');
+		if (!bar) return;
+		const li = document.createElement('li');
+		li.innerHTML = '<span class="array-menu-top" role="menuitem" tabindex="-1">Window</span>';
+		const top = li.firstChild;
+		const help = [...bar.children].find((c) => (c.querySelector('.name') || {}).textContent === 'Help');
+		if (help) bar.insertBefore(li, help); else bar.appendChild(li);
+		let menu = null;
+		const fechar = () => { if (menu) { menu.remove(); menu = null; top.classList.remove('open'); } };
+		const abrir = () => {
+			fechar();
+			menu = document.createElement('ul');
+			menu.className = 'array-window-menu';
+			for (const name in PANELS) {
+				const item = document.createElement('li');
+				const on = !panelEl(name).classList.contains('hidden-panel');
+				item.className = on ? 'on' : '';
+				item.innerHTML = '<span class="mark"></span><span>' + PANELS[name] + '</span>';
+				item.addEventListener('click', () => { showPanel(name, !on); fechar(); });
+				menu.appendChild(item);
+			}
+			const sep = document.createElement('li'); sep.className = 'sep'; menu.appendChild(sep);
+			const reset = document.createElement('li'); reset.innerHTML = '<span class="mark" style="visibility:hidden"></span><span>Reset layout</span>';
+			reset.addEventListener('click', () => { resetLayout(); fechar(); });
+			menu.appendChild(reset);
+			const tab = document.createElement('li'); tab.innerHTML = '<span class="mark" style="visibility:hidden"></span><span>Hide all panels</span><span class="shortcut" style="margin-left:auto;color:var(--text-color-muted);font-size:11px">Tab</span>';
+			tab.addEventListener('click', () => { togglePanels(); fechar(); });
+			menu.appendChild(tab);
+			document.body.appendChild(menu);
+			const r = top.getBoundingClientRect();
+			menu.style.left = r.left + 'px'; menu.style.top = r.bottom + 'px';
+			top.classList.add('open');
+			const itens = {};
+			for (const li of menu.querySelectorAll('li:not(.sep)')) { const ir = li.getBoundingClientRect(); itens[li.textContent.trim().replace(/Tab$/, '')] = [Math.round(ir.x + ir.width / 2), Math.round(ir.y + ir.height / 2)]; }
+			console.log('[array] window-menu ' + JSON.stringify(itens));
+		};
+		top.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); if (menu) fechar(); else abrir(); }, true);
+		document.addEventListener('mousedown', (e) => { if (menu && !menu.contains(e.target) && e.target !== top) fechar(); }, true);
+		window.addEventListener('keydown', (e) => { if (menu && e.key === 'Escape') fechar(); }, true);
 	}
 
 	// ---------- seleção ----------
@@ -914,6 +1132,11 @@
 		viewEvents();
 		layoutEvents();
 		navigatorEvents();
+		dockEvents();
+		panelToggleMotion();
+		windowMenu();
+		loadLayout();
+		setTimeout(() => { logPanels(); const t = document.querySelector('.array-menu-top'); if (t) { const r = t.getBoundingClientRect(); console.log('[array] window-top ' + JSON.stringify([Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2)])); } }, 600);
 		hostEvents();
 		trackChanges();
 		blendRow();

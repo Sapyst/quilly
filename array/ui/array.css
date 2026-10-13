@@ -181,14 +181,78 @@ label { color: var(--text-color-muted); }
 .attributes .item > button:not(.ui_icon_button) { padding: 3px 9px; }
 .undo_button, .mobile_menu { display: none !important; }
 
-/* ---------- tools (left), two columns like Pixelorama / Photoshop ---------- */
-.sidebar_left {
-	width: 76px;
+/* ---------- docks and panels (array.js: drag by the header, snap into a dock, or float) ---------- */
+.array-dock {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 6px 4px 6px 6px;
+	margin: 0;
+	width: auto;
+	min-width: 0;
+	overflow-y: auto;
+	overflow-x: hidden;
+	scrollbar-gutter: stable;
+	background: var(--background);
+	z-index: 1;
+	transition: none;
+}
+#array_dock_left { grid-area: sidebar_left; border-right: 1px solid #0d0d10; }
+#array_dock_right { grid-area: sidebar_right; border-left: 1px solid #0d0d10; }
+.array-dock:empty { padding: 0; border: 0; width: 0; }
+body.array-dragging .array-dock:empty { width: 30px; padding: 6px; border-color: var(--accent); background: var(--accent-soft); }
+.array-dock::-webkit-scrollbar { width: 7px; }
+.array-panel { width: 244px; flex-shrink: 0; }
+.array-panel.tools { width: auto; min-width: 76px; align-self: stretch; contain: inline-size; }   /* sozinho: 76px; numa doca larga: estica e ganha colunas (contain: a fileira de ferramentas não dita a largura da doca) */
+.array-floating.array-panel.tools { width: 76px; }
+.array-dock .array-panel.layers { flex: 1 0 auto; min-height: 140px; }
+.array-panel > h2.array-grip { cursor: grab; user-select: none; -webkit-user-select: none; position: relative; padding-left: 20px; }
+.array-panel > h2.array-grip::after {
+	content: ''; position: absolute; left: 8px; top: 9px; width: 6px; height: 10px;
+	background-image: radial-gradient(circle, var(--text-color-muted) 1px, transparent 1.2px);
+	background-size: 3px 3px; opacity: 0.7;
+}
+.array-panel > h2.toggle.array-grip:before { right: 10px; }
+body.array-dragging, body.array-dragging .array-panel > h2.array-grip { cursor: grabbing !important; }
+body.array-dragging .middle_area { pointer-events: none; }
+body.array-dragging, body.array-dragging * { user-select: none !important; -webkit-user-select: none !important; }
+.array-floating { position: fixed; z-index: 60; box-shadow: 0 0 0 1px #0d0d10, 0 14px 40px rgba(0, 0, 0, 0.6); margin: 0; }
+.array-floating.array-panel.layers { height: 320px; display: flex; flex-direction: column; }
+.array-floating.array-panel.layers .content { flex: 1; overflow-y: auto; }
+.array-slot { height: 0; border-radius: 3px; background: var(--accent); opacity: 0; flex-shrink: 0; transition: height 120ms ease-out, opacity 120ms ease-out; }
+.array-slot.on { height: 4px; opacity: 1; }
+.array-attach { animation: array-attach 200ms ease-out; }
+@keyframes array-attach { 0% { transform: scale(0.97); } 60% { transform: scale(1.012); } 100% { transform: none; } }
+.array-panel.hidden-panel { display: none; }
+
+/* o menu Window (nosso) na barra de menus */
+.main_menu > ul.menu_bar > li > .array-menu-top { display: flex; align-items: center; font-size: 12.5px; color: var(--menu-text-color); padding: 0 11px; height: 100%; cursor: pointer; }
+.main_menu > ul.menu_bar > li > .array-menu-top:hover, .main_menu > ul.menu_bar > li > .array-menu-top.open { background: #2a2b30; color: #fff; }
+.array-window-menu {
+	position: fixed; z-index: 120; min-width: 200px; padding: 5px 0; margin: 0; list-style: none;
+	background: var(--menu-dropdown-background-color); border-radius: 6px;
+	box-shadow: 0 0 0 1px var(--menu-dropdown-border-color), 0 12px 32px rgba(0, 0, 0, 0.55);
+}
+.array-window-menu li { display: flex; align-items: center; height: 27px; padding: 0 14px 0 12px; font-size: 12.5px; color: var(--menu-dropdown-text-color); cursor: pointer; }
+.array-window-menu li:hover { background: var(--menu-dropdown-hover-background-color); color: #fff; }
+.array-window-menu li.sep { height: 1px; padding: 0; margin: 4px 0; background: var(--menu-dropdown-divider-color); cursor: default; }
+.array-window-menu li .mark { width: 8px; height: 8px; border-radius: 2px; margin-right: 10px; border: 1px solid var(--text-color-muted); }
+.array-window-menu li.on .mark { background: var(--accent); border-color: var(--accent); }
+
+/* ---------- tools, two columns like Pixelorama / Photoshop ---------- */
+.array-panel.tools .sidebar_left {
+	width: auto;
+	justify-content: flex-start;
 	padding: 4px;
-	margin-right: 0;
-	border-right: 1px solid #0d0d10;
+	margin: 0;
+	border: 0;
 	align-content: start;
 	gap: 2px;
+	max-height: none;
+	overflow: visible;
+	background: transparent;
+	display: flex;
+	flex-wrap: wrap;
 }
 .sidebar_left .item {
 	width: 32px;
@@ -217,23 +281,9 @@ body.array-hand.array-panning #main_wrapper, body.array-hand.array-panning #canv
 body.array-zoom #main_wrapper, body.array-zoom #canvas_minipaint { cursor: zoom-in !important; }
 body.array-zoom.array-zoom-out #main_wrapper, body.array-zoom.array-zoom-out #canvas_minipaint { cursor: zoom-out !important; }
 
-/* ---------- right panels ---------- */
-.sidebar_right {
-	width: 244px;
-	margin: 0;
-	padding: 6px 4px 6px 7px;
-	gap: 6px;
-	border-left: 1px solid #0d0d10;
-	background: var(--background);
-	overflow-y: auto;
-	overflow-x: hidden;
-	scrollbar-gutter: stable;    /* a barra de rolagem tem o seu lugar: nunca cobre os painéis */
-}
-.sidebar_right::-webkit-scrollbar { width: 7px; }
-.sidebar_right::-webkit-scrollbar-thumb { border-width: 1px; }
-.sidebar_right .block { flex-shrink: 0; }
-.sidebar_right .block.layers { flex: 1 0 auto; min-height: 140px; }
-.sidebar_right .block.layers .content { padding-bottom: 10px; }
+/* ---------- panels ---------- */
+.sidebar_right.array-dock { width: auto; margin: 0; padding: 6px 4px 6px 7px; transition: none; }
+.array-panel.layers .content { padding-bottom: 10px; }
 .block, .sidebar_right .block {
 	background: var(--block-background-color);
 	border: 1px solid var(--border-color);
@@ -373,13 +423,41 @@ body.array-zoom.array-zoom-out #main_wrapper, body.array-zoom.array-zoom-out #ca
 #array_status.on { opacity: 1; transform: none; }
 
 /* Tab hides every panel (like Photoshop); the canvas gets the whole window */
-body.array-panels-hidden .sidebar_left, body.array-panels-hidden .sidebar_right { display: none; }
+body.array-panels-hidden .array-dock, body.array-panels-hidden .array-floating { display: none; }
 
 /* small screens: never let the mobile layout kick in */
 @media screen and (max-width: 700px) {
 	body { padding-top: 30px; }
 	.wrapper { top: 30px; }
-	.sidebar_left { position: static; }
-	.sidebar_right { position: static; height: auto; }
+	.array-dock { position: static; height: auto; }
 	.main_menu > ul.menu_bar { height: 30px; padding-left: 6px; padding-right: 0; }
+}
+
+/* ---------- motion: everything moves a little (our style, not a rigid toolbox) ---------- */
+@media (prefers-reduced-motion: no-preference) {
+	.array-panel { transition: transform 160ms ease-out, box-shadow 160ms ease-out, opacity 160ms ease-out; }
+	.array-floating.array-lift { transform: scale(1.015); box-shadow: 0 0 0 1px var(--accent), 0 22px 60px rgba(0, 0, 0, 0.7); }
+	.array-floating { transition: box-shadow 160ms ease-out, transform 160ms ease-out; }
+	.sidebar_left .item { transition: background-color 120ms ease-out, transform 120ms ease-out, box-shadow 120ms ease-out; }
+	.sidebar_left .item:hover { transform: translateY(-1px); }
+	.sidebar_left .item.active { animation: array-tool-pop 220ms ease-out; }
+	@keyframes array-tool-pop { 0% { transform: scale(0.92); } 55% { transform: scale(1.08); } 100% { transform: none; } }
+	.layers_list .layer_name, .layer_add, .layers_arrow, .layers_list .visibility, .layers_list .delete { transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out, opacity 120ms ease-out; }
+	.layers_list .item { animation: array-fade-in 160ms ease-out; }
+	.block h2.toggle:before { transition: transform 180ms ease-out; }
+	.block h2.toggled:before { border-width: 0 3.5px 4.5px 3.5px; border-color: transparent transparent var(--text-color-muted) transparent; transform: rotate(180deg); }
+	.block .content, #toggle_preview { transform-origin: top; }
+	.main_menu > ul.menu_dropdown, .array-window-menu { animation: array-menu-in 130ms ease-out; transform-origin: top left; }
+	@keyframes array-menu-in { from { opacity: 0; transform: translateY(-5px) scale(0.985); } to { opacity: 1; transform: none; } }
+	.main_menu > ul.menu_bar > li > a, .main_menu > ul.menu_dropdown > li > a, .array-window-menu li, .array-menu-item { transition: background-color 90ms ease-out, color 90ms ease-out; }
+	#popups .popup { animation: array-pop-in 170ms cubic-bezier(0.2, 0.9, 0.3, 1.15); }
+	@keyframes array-pop-in { from { opacity: 0; transform: translate(-50%, 0) scale(0.96); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+	#action_attributes.array-swap { animation: array-fade-in 160ms ease-out; }
+	@keyframes array-fade-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+	.attributes .item > button, button, input[type="button"], select, input[type="text"], input[type="number"] { transition: background-color 110ms ease-out, border-color 110ms ease-out, box-shadow 110ms ease-out, color 110ms ease-out; }
+	.array-blend select:hover, .attributes select:hover { border-color: #4a4d55; }
+	.canvas_wrapper { transition: box-shadow 200ms ease-out; }
+	.ui_swatches .swatch, .ui_color_sample, .color_area { transition: box-shadow 120ms ease-out, transform 120ms ease-out; }
+	.ui_swatches .swatch:hover { transform: scale(1.06); }
+	.alertify-notifier .ajs-message { transition: transform 200ms ease-out, opacity 200ms ease-out; }
 }

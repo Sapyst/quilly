@@ -24,7 +24,13 @@
 			</button>
 		</div>
 
-		<div class="sidebar_left" id="tools_container"></div>
+		<!-- docas: qualquer painel pode ir pra qualquer uma (ou flutuar); array.js cuida do arrastar -->
+		<div class="array-dock" id="array_dock_left">
+			<div class="block tools array-panel" data-panel="tools">
+				<h2 class="array-grip">Tools</h2>
+				<div class="sidebar_left" id="tools_container"></div>
+			</div>
+		</div>
 
 		<div class="middle_area" id="middle_area">
 
@@ -44,29 +50,29 @@
 			</div>
 		</div>
 
-		<div class="sidebar_right">
-			<div class="preview block">
-				<h2 class="trn toggle" data-target="toggle_preview">Navigator</h2>
+		<div class="sidebar_right array-dock" id="array_dock_right">
+			<div class="preview block array-panel" data-panel="navigator">
+				<h2 class="trn toggle array-grip" data-target="toggle_preview">Navigator</h2>
 				<div id="toggle_preview"></div>
 			</div>
 
-			<div class="colors block">
-				<h2 class="trn toggle" data-target="toggle_colors">Color</h2>
+			<div class="colors block array-panel" data-panel="color">
+				<h2 class="trn toggle array-grip" data-target="toggle_colors">Color</h2>
 				<div class="content" id="toggle_colors"></div>
 			</div>
 
-			<div class="block" id="info_base">
-				<h2 class="trn toggle toggle-full" data-target="toggle_info">Info</h2>
+			<div class="block array-panel" id="info_base" data-panel="info">
+				<h2 class="trn toggle toggle-full array-grip" data-target="toggle_info">Info</h2>
 				<div class="content" id="toggle_info"></div>
 			</div>
 
-			<div class="details block" id="details_base">
-				<h2 class="trn toggle toggle-full" data-target="toggle_details">Properties</h2>
+			<div class="details block array-panel" id="details_base" data-panel="properties">
+				<h2 class="trn toggle toggle-full array-grip" data-target="toggle_details">Properties</h2>
 				<div class="content details-content" id="toggle_details"></div>
 			</div>
 
-			<div class="layers block">
-				<h2 class="trn">Layers</h2>
+			<div class="layers block array-panel" data-panel="layers">
+				<h2 class="trn array-grip">Layers</h2>
 				<div class="array-blend" id="array_blend">
 					<select id="array_blend_mode" title="Blending mode"></select>
 					<label title="Opacity"><input id="array_blend_opacity" type="number" min="0" max="100" step="1"><span>%</span></label>

@@ -90,6 +90,15 @@ until you convert them to raster, and text and shapes stay vector until then.
 Keys that Photoshop uses for tools Array does not have (Lasso `L`, Magic Wand `W`, Healing `J`, …) do nothing
 instead of triggering something else. The full list is in the app: Help → Keyboard Shortcuts.
 
+### Panels that move
+
+Every panel (Tools, Navigator, Color, Info, Properties, Layers) is grabbed by its header. A short drag
+unplugs it: it floats with a lifted shadow, and when it comes near the left or right dock a slot opens between
+the panels and snaps it in ("attach"). Dropped anywhere else, it stays floating and clings to the window edges.
+The **Window** menu shows and hides panels and restores the default layout; `Tab` hides them all. The layout is
+remembered between sessions. Opening, closing, docking, menus and dialogs are all animated (and follow the
+system's reduced-motion setting).
+
 ### Upscale (Lanczos or AI)
 
 Image → **Upscale…** (`Ctrl+Alt+U`) enlarges the whole document 2×, 3× or 4×: image layers go through the engine,
