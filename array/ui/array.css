@@ -132,6 +132,17 @@ label { color: var(--text-color-muted); }
 .main_menu > ul.menu_dropdown > li > a > .shortcut { font-size: 11px; margin-left: 24px; letter-spacing: 0.2px; }
 .main_menu > ul.menu_dropdown > li > a[aria-haspopup="true"]::after { color: var(--text-color-muted); }
 
+/* item de menu nosso (Upscale…): mesmo visual dos links do miniPaint */
+.main_menu > ul.menu_dropdown > li > .array-menu-item {
+	display: flex; flex-direction: row; align-items: center; height: 27px; line-height: 27px; padding: 0 14px;
+	font-size: 12.5px; color: var(--menu-dropdown-text-color); cursor: pointer;
+}
+.main_menu > ul.menu_dropdown > li > .array-menu-item:hover { background: var(--menu-dropdown-hover-background-color); color: #fff; }
+.main_menu > ul.menu_dropdown > li > .array-menu-item > .name { flex-grow: 1; white-space: nowrap; }
+.main_menu > ul.menu_dropdown > li > .array-menu-item > .shortcut { font-size: 11px; margin-left: 24px; color: var(--menu-dropdown-text-muted-color); }
+/* diálogo de progresso: só o Cancelar */
+#popups .popup.array-progress [data-id="popup_ok"] { display: none; }
+
 /* ---------- options bar (under the menu) ---------- */
 .wrapper { top: 30px; bottom: 0; }
 .submenu { background: var(--section-background-color); margin-bottom: 0; border-bottom: 1px solid #0d0d10; min-height: 38px; }

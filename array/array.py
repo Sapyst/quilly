@@ -19,7 +19,13 @@ import base64
 import json
 import mimetypes
 import os
+import shutil
+import subprocess
 import sys
+import threading
+import time
+import urllib.request
+import zipfile
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, AQUI)
@@ -31,6 +37,12 @@ PERFIL = archhost.dados("array")
 IMAGENS = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".avif", ".svg", ".tif", ".tiff", ".ico")
 DOCUMENTOS = (".array", ".json")
 LIMITE = 200 * 1024 * 1024
+# ---------- upscale: processos externos, nada residente (usou, fez, descarregou) ----------
+CACHE = os.path.join(GLib.get_user_cache_dir(), "arch-quilly", "array", "upscale")     # disco, não /tmp (que é RAM)
+MOTOR_DIR = os.path.join(PERFIL, "realesrgan")
+MOTOR_URL = "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesrgan-ncnn-vulkan-20220424-ubuntu.zip"
+MOTOR_MB = 45
+MODELOS = {"photo": "realesrgan-x4plus", "art": "realesrgan-x4plus-anime"}
 FILTROS_ABRIR = [("Images and Array documents", ["*.array", "*.json"] + ["*" + e for e in IMAGENS]),
                  ("Array document", ["*.array"]),
                  ("Images", ["*" + e for e in IMAGENS]),
@@ -38,6 +50,20 @@ FILTROS_ABRIR = [("Images and Array documents", ["*.array", "*.json"] + ["*" + e
 FILTROS_SALVAR = [("Array document (keeps layers)", ["*.array"]), ("PNG", ["*.png"]), ("JPEG", ["*.jpg", "*.jpeg"]),
                   ("WebP", ["*.webp"]), ("GIF", ["*.gif"]), ("BMP", ["*.bmp"]), ("TIFF", ["*.tif", "*.tiff"]),
                   ("JSON (miniPaint)", ["*.json"]), ("All files", ["*"])]
+
+
+def motor():
+    """(binário, pasta de modelos) do Real-ESRGAN: o do sistema, se houver; senão o baixado no perfil; senão None."""
+    sistema = shutil.which("realesrgan-ncnn-vulkan")
+    if sistema:
+        for m in ("/usr/share/realesrgan-ncnn-vulkan/models", "/usr/share/realesrgan-ncnn-vulkan", "/usr/lib/realesrgan-ncnn-vulkan/models"):
+            if os.path.isfile(os.path.join(m, "realesrgan-x4plus.param")):
+                return sistema, m
+    binario = os.path.join(MOTOR_DIR, "realesrgan-ncnn-vulkan")
+    modelos = os.path.join(MOTOR_DIR, "models")
+    if os.path.isfile(binario) and os.path.isfile(os.path.join(modelos, "realesrgan-x4plus.param")):
+        return binario, modelos
+    return None, None
 
 
 def ler_json(nome, padrao):
@@ -96,6 +122,8 @@ class Janela(archhost.Host):
                                                   Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 1)
         self.add_css_class("array")
         self.connect("close-request", self.ao_fechar)
+        self.trabalho = None                     # subprocesso de upscale em andamento (pra cancelar)
+        archhost.Host._dinamicos["array"] = self.servir_dinamico   # app://array/upscale/... = resultados no disco
 
     # ---------- arquivos vindos de fora (linha de comando, Quilly, gerenciador de arquivos) ----------
     def abrir_arquivo_externo(self, caminho):
@@ -191,6 +219,112 @@ class Janela(archhost.Host):
                 GLib.idle_add(lambda: (self.close(), False)[1])
         elif t == "quit":
             self.close()
+        elif t == "upscale-engine?":
+            self.enviar({"type": "upscale-engine", "ready": motor()[0] is not None, "size_mb": MOTOR_MB})
+        elif t == "upscale-engine-install":
+            threading.Thread(target=self.instalar_motor, daemon=True).start()
+        elif t == "upscale":
+            self.upscale(msg)
+        elif t == "upscale-cancel":
+            p = self.trabalho
+            if p:
+                p.kill()
+        elif t == "upscale-cleanup":
+            shutil.rmtree(os.path.join(CACHE, str(msg.get("job") or "")), ignore_errors=True)
+
+    # ---------- upscale ----------
+    def no_main(self, msg):
+        """Mensagem pro JS a partir de outra thread: o GTK só aceita no loop principal."""
+        GLib.idle_add(lambda: (self.enviar(msg), False)[1])
+
+    def servir_dinamico(self, caminho):
+        """O resultado do upscale vai pro JS como app://array/upscale/<job>/<id>.png: o WebKit lê o arquivo
+        direto, sem passar pela ponte em base64."""
+        if caminho.startswith("upscale/"):
+            alvo = os.path.realpath(os.path.join(CACHE, caminho[len("upscale/"):]))
+            if alvo.startswith(os.path.realpath(CACHE)) and os.path.isfile(alvo):
+                with open(alvo, "rb") as f:
+                    return f.read(), "image/png"
+        return None
+
+    def instalar_motor(self):
+        """Baixa o release oficial do Real-ESRGAN (ncnn + Vulkan) pro perfil: só o binário e os modelos."""
+        try:
+            os.makedirs(CACHE, exist_ok=True)
+            zip_ = os.path.join(CACHE, "realesrgan.zip")
+            self.no_main({"type": "upscale-progress", "text": "Downloading the AI engine…"})
+            req = urllib.request.Request(MOTOR_URL, headers={"User-Agent": "array/1.0"})
+            with urllib.request.urlopen(req, timeout=120) as r, open(zip_, "wb") as f:
+                total = int(r.headers.get("Content-Length") or 0)
+                lido = 0
+                while True:
+                    bloco = r.read(1 << 18)
+                    if not bloco:
+                        break
+                    f.write(bloco)
+                    lido += len(bloco)
+                    if total:
+                        self.no_main({"type": "upscale-progress", "text": f"Downloading the AI engine… {lido * 100 // total}%"})
+            self.no_main({"type": "upscale-progress", "text": "Unpacking…"})
+            os.makedirs(MOTOR_DIR, exist_ok=True)
+            with zipfile.ZipFile(zip_) as z:
+                for nome in z.namelist():
+                    if nome == "realesrgan-ncnn-vulkan" or (nome.startswith("models/") and nome.endswith((".bin", ".param"))):
+                        z.extract(nome, MOTOR_DIR)
+            os.chmod(os.path.join(MOTOR_DIR, "realesrgan-ncnn-vulkan"), 0o755)
+            os.remove(zip_)
+            self.no_main({"type": "upscale-engine", "ready": motor()[0] is not None, "size_mb": MOTOR_MB, "installed": True})
+        except Exception as e:  # noqa: BLE001
+            self.no_main({"type": "upscale-error", "text": f"could not install the AI engine: {e}"})
+
+    def upscale(self, msg):
+        """items: [{id, data (png base64)}]. Cada um vira um PNG no disco, passa pelo vips (Lanczos) ou pelo
+        Real-ESRGAN (IA), e o resultado fica em CACHE/<job>/<id>.png (servido como app://array/upscale/...).
+        O processo externo termina a cada camada: nada de modelo carregado entre um uso e outro."""
+        job = str(msg.get("job") or int(time.time() * 1000))
+        pasta = os.path.join(CACHE, job)
+        itens = msg.get("items") or []
+        metodo = msg.get("method") or "lanczos"
+        escala = max(2, min(4, int(msg.get("scale") or 2)))
+        modelo = MODELOS.get(msg.get("model") or "photo", "realesrgan-x4plus")
+
+        def trabalho():
+            try:
+                os.makedirs(pasta, exist_ok=True)
+                binario = modelos = None
+                if metodo == "ai":
+                    binario, modelos = motor()
+                    if not binario:
+                        raise RuntimeError("the AI engine is not installed")
+                rotulo = "AI" if metodo == "ai" else "Lanczos"
+                for i, item in enumerate(itens, 1):
+                    entrada = os.path.join(pasta, f"{item['id']}-in.png")
+                    saida = os.path.join(pasta, f"{item['id']}.png")
+                    bruto = item.get("data") or ""
+                    with open(entrada, "wb") as f:
+                        f.write(base64.b64decode(bruto.split(",", 1)[1] if bruto.startswith("data:") else bruto))
+                    self.no_main({"type": "upscale-progress", "text": f"{rotulo} · layer {i} of {len(itens)}…"})
+                    if metodo == "ai":
+                        cmd = [binario, "-i", entrada, "-o", saida, "-n", modelo, "-s", str(escala), "-m", modelos, "-f", "png"]
+                    else:
+                        cmd = ["vips", "resize", entrada, saida, str(escala), "--kernel", "lanczos3"]
+                    p = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, errors="replace")
+                    self.trabalho = p
+                    for linha in p.stderr:                       # o Real-ESRGAN imprime "12.50%" por linha
+                        linha = linha.strip()
+                        if linha.endswith("%") and linha[:-1].replace(".", "").isdigit():
+                            self.no_main({"type": "upscale-progress", "text": f"{rotulo} · layer {i} of {len(itens)} · {linha}"})
+                    rc = p.wait()
+                    self.trabalho = None
+                    os.remove(entrada)
+                    if rc != 0 or not os.path.isfile(saida):
+                        raise RuntimeError(f"{rotulo} failed (exit code {rc})")
+                    self.no_main({"type": "upscaled", "job": job, "id": item["id"], "url": f"app://array/upscale/{job}/{item['id']}.png"})
+                self.no_main({"type": "upscale-done", "job": job})
+            except Exception as e:  # noqa: BLE001
+                self.trabalho = None
+                self.no_main({"type": "upscale-error", "job": job, "text": str(e)})
+        threading.Thread(target=trabalho, daemon=True).start()
 
     def salvar(self, msg):
         """{path, name, data (base64)}: grava e avisa. O caminho vem do save-dialog (ou é o do arquivo aberto)."""

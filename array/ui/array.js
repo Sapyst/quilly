@@ -59,7 +59,7 @@
 		'Duplicate': 'Ctrl+J', 'Show / Hide': 'Ctrl+,', 'Merge Down': 'Ctrl+E', 'Flatten Image': 'Ctrl+Shift+E',
 		'Grayscale': 'Ctrl+Shift+U', 'Negative': 'Ctrl+I', 'Black and White': 'Ctrl+Alt+Shift+B',
 		'Content Fill': 'Shift+F5', 'Search': 'Ctrl+F', 'Settings': 'Ctrl+K', 'Keyboard Shortcuts': 'Ctrl+Alt+Shift+K',
-		'Up': 'Ctrl+]', 'Down': 'Ctrl+[',
+		'Up': 'Ctrl+]', 'Down': 'Ctrl+[', 'Upscale…': 'Ctrl+Alt+U',
 	};
 	// "New" do menu Layer (mesmo nome do File > New): tratado pelo pai
 	const MENU_SHORTCUTS_BY_PARENT = { 'Layer/New': 'Ctrl+Shift+N' };
@@ -70,7 +70,8 @@
 	const $ = (s) => document.querySelector(s);
 	const mod = (k) => G.modules[k];
 	const run = (k, fn, ...a) => { const m = mod(k); if (m && m[fn]) return m[fn](...a); toast('Not available: ' + k, 'error'); };
-	const popupOpen = () => [...document.querySelectorAll('#popups .popup')].some((p) => p.offsetParent !== null);
+	const visivel = (el) => !!el && el.getClientRects().length > 0;      // offsetParent não serve: os popups são position:fixed
+	const popupOpen = () => [...document.querySelectorAll('#popups .popup')].some(visivel);
 	let statusTimer = null;
 	function status(text, ms = 1600) {
 		const el = $('#array_status');
@@ -87,7 +88,12 @@
 	function isTyping(el) {
 		if (!el || el === document.body) return false;
 		const tag = el.tagName;
-		return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+		if (tag === 'TEXTAREA' || el.isContentEditable) return true;
+		if (tag === 'INPUT') return !['radio', 'checkbox', 'button', 'range', 'color', 'submit'].includes(el.type);
+		return false;
+	}
+	function visiblePopup() {
+		return [...document.querySelectorAll('#popups .popup')].filter(visivel).pop() || null;
 	}
 
 	// ---------- ferramentas ----------
@@ -273,6 +279,189 @@
 		const render = L.render.bind(L);
 		L.render = function (force) { if (force === true && cfg.need_render) fitPreview(); return render(force); };
 		fitPreview();
+	}
+
+	// ---------- upscale: Lanczos (vips) ou IA com detalhe fino (Real-ESRGAN) ----------
+	// O trabalho pesado roda em processo externo disparado pelo array.py, que termina ao fim de cada camada:
+	// nada de modelo carregado enquanto você edita. Camadas de imagem vão pro motor; texto e formas são
+	// reescalados pela própria lógica de Resize do miniPaint (continuam editáveis). Tudo numa ação só (Ctrl+Z).
+	const UP_MAX_SIDE = 8192, UP_MAX_MP = 40;
+	const UP_METHODS = ['Lanczos (sharp, no AI)', 'AI – fine detail (Real-ESRGAN)'];
+	const UP_SCALES = ['2x', '3x', '4x'];
+	const UP_MODELS = ['Photo', 'Illustration / anime'];
+	let up = null, engineWaiter = null;
+	const POPUP = () => mod('help/about').POP;
+	function imageLayers() { return cfg.layers.filter((l) => l.type === 'image' && (l.link || l.link_canvas)); }
+	function layerBitmap(layer) {
+		const src = layer.link_canvas || layer.link;
+		const c = document.createElement('canvas');
+		c.width = layer.width_original || src.width; c.height = layer.height_original || src.height;
+		c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
+		return c;
+	}
+	function upOutcome(scale) {
+		let mp = 0, tooBig = false;
+		for (const l of imageLayers()) {
+			const w = (l.width_original || l.link.width) * scale, h = (l.height_original || l.link.height) * scale;
+			mp += w * h / 1e6;
+			if (w > UP_MAX_SIDE || h > UP_MAX_SIDE || w * h > UP_MAX_MP * 1e6) tooBig = true;
+		}
+		return { w: Math.round(cfg.WIDTH * scale), h: Math.round(cfg.HEIGHT * scale), mp, tooBig };
+	}
+	function upInfoHtml() {
+		const rows = [2, 3, 4].map((s) => {
+			const o = upOutcome(s);
+			return `<div style="display:flex;justify-content:space-between;padding:2px 0${o.tooBig ? ';opacity:.5' : ''}">` +
+				`<span>${s}x</span><span>${o.w} × ${o.h} px · ${o.mp.toFixed(1)} MP in layers${o.tooBig ? ' · too big' : ''}</span></div>`;
+		}).join('');
+		return `<div style="font-size:12px;color:var(--text-color-muted)">${rows}` +
+			`<div style="margin-top:6px">Limit per layer: ${UP_MAX_SIDE} px per side, ${UP_MAX_MP} MP. The AI runs in a separate process on the GPU and is unloaded when done.</div></div>`;
+	}
+	function upscaleDialog() {
+		if (up) { toast('An upscale is already running', 'warning'); return; }
+		if (!imageLayers().length) { toast('No image layer to upscale', 'error'); return; }
+		POPUP().show({
+			title: 'Upscale',
+			className: 'array-upscale',
+			params: [
+				{ name: 'method', title: 'Method:', type: 'select', values: UP_METHODS, value: UP_METHODS[0] },
+				{ name: 'scale', title: 'Scale:', type: 'select', values: UP_SCALES, value: UP_SCALES[0] },
+				{ name: 'model', title: 'AI model:', type: 'select', values: UP_MODELS, value: UP_MODELS[0] },
+				{ title: '', html: upInfoHtml() },
+			],
+			on_finish: (p) => runUpscale(p),
+		});
+		const primeiro = document.getElementById('pop_data_method');
+		if (primeiro) primeiro.focus();
+	}
+	function askEngine() {
+		return new Promise((resolve) => { engineWaiter = resolve; send({ type: 'upscale-engine?' }); });
+	}
+	function progressPopup(text) {
+		POPUP().show({
+			title: 'Upscaling',
+			className: 'array-progress',
+			params: [{ title: '', html: `<div id="array_up_txt" style="padding:6px 0 2px">${text}</div>` }],
+			on_cancel: () => cancelUpscale(),
+		});
+	}
+	function setProgress(text) {
+		const el = document.getElementById('array_up_txt');
+		if (el) el.textContent = text; else status(text, 3000);
+	}
+	function cancelUpscale() {
+		if (!up) return;
+		up.cancelled = true;
+		send({ type: 'upscale-cancel' });
+		send({ type: 'upscale-cleanup', job: up.job });
+		up = null;
+		status('Upscale cancelled');
+	}
+	async function runUpscale(p) {
+		const scale = parseInt(p.scale, 10) || 2;
+		const method = String(p.method).startsWith('AI') ? 'ai' : 'lanczos';
+		const model = String(p.model).startsWith('Illus') ? 'art' : 'photo';
+		const o = upOutcome(scale);
+		if (o.tooBig) { toast(`Too big at ${scale}x (limit ${UP_MAX_SIDE} px per side, ${UP_MAX_MP} MP per layer). Try a smaller scale.`, 'error'); return; }
+		if (method === 'ai') {
+			const eng = await askEngine();
+			if (!eng.ready) {
+				const ok = await new Promise((resolve) => POPUP().show({
+					title: 'AI engine',
+					params: [{ title: '', html: `<p style="margin:4px 0 8px">The AI upscale uses Real-ESRGAN, which is not installed yet.</p>` +
+						`<p style="margin:0;color:var(--text-color-muted)">Download it once (${eng.size_mb} MB, the official release from GitHub) into your Array profile?</p>` }],
+					on_finish: () => resolve(true), on_cancel: () => resolve(false),
+				}));
+				if (!ok) return;
+				progressPopup('Downloading the AI engine…');
+				const r = await askEngineInstall();
+				if (!r.ready) { POPUP().hide(); toast('The AI engine could not be installed', 'error'); return; }
+			}
+		}
+		up = { job: String(Date.now()), scale, method, results: new Map(), cancelled: false };
+		progressPopup('Preparing layers…');
+		const items = [];
+		for (const l of imageLayers()) {
+			const c = layerBitmap(l);
+			const blob = await new Promise((ok) => c.toBlob(ok, 'image/png'));
+			items.push({ id: l.id, data: await blobToBase64(blob) });
+		}
+		if (!up || up.cancelled) return;
+		setProgress(method === 'ai' ? 'AI · starting the engine…' : 'Lanczos…');
+		send({ type: 'upscale', job: up.job, method, scale, model, items });
+	}
+	function askEngineInstall() {
+		return new Promise((resolve) => { engineWaiter = resolve; send({ type: 'upscale-engine-install' }); });
+	}
+	function imageLayerAction(layer, img, s) {
+		const id = layer.id;
+		const before = { link: layer.link, link_canvas: layer.link_canvas, width_original: layer.width_original, height_original: layer.height_original,
+			width: layer.width, height: layer.height, x: layer.x, y: layer.y };
+		const after = { link: img, link_canvas: null, width_original: img.width, height_original: img.height,
+			width: Math.round(layer.width * s), height: Math.round(layer.height * s), x: Math.round(layer.x * s), y: Math.round(layer.y * s) };
+		const apply = (v) => { const l = L.get_layer(id); if (l) Object.assign(l, v); cfg.need_render = true; };
+		return { action_id: 'array_upscale_layer', action_description: 'Upscale layer', is_done: false, memory_estimate: 0, database_estimate: 0,
+			async do() { apply(after); this.is_done = true; }, async undo() { apply(before); this.is_done = false; },
+			free() { before.link = before.link_canvas = null; } };
+	}
+	async function applyUpscale() {
+		const s = up.scale, actions = [];
+		const resize = mod('image/resize');
+		const params = { width_percent: s * 100, height_percent: s * 100, mode: 'Basic', sharpen: false, layers: 'All' };
+		for (const layer of cfg.layers) {
+			if (layer.type === 'image') {
+				const img = up.results.get(layer.id);
+				if (img) actions.push(imageLayerAction(layer, img, s));
+			} else if (layer.type === 'text' || layer.is_vector) {
+				try { actions.push(...await resize.resize_layer(layer, params)); } catch (e) { console.warn('layer skipped', layer.name, e); }
+			}
+		}
+		actions.push(...resize.resize_gui({ width_percent: s * 100, height_percent: s * 100 }));
+		const bundle = { action_id: 'array_upscale', action_description: 'Upscale', is_done: false, memory_estimate: 0, database_estimate: 0,
+			async do() { for (const a of actions) await a.do(); this.is_done = true; },
+			async undo() { for (const a of actions.slice().reverse()) await a.undo(); this.is_done = false; },
+			async free() { for (const a of actions) if (a.free) await a.free(); } };
+		await State.do_action(bundle);
+		send({ type: 'upscale-cleanup', job: up.job });
+		POPUP().hide();
+		preview.zoom_auto();
+		status(`Upscaled ${s}x (${up.method === 'ai' ? 'AI' : 'Lanczos'}): ${cfg.WIDTH} × ${cfg.HEIGHT} px`, 3000);
+		up = null;
+	}
+	function onUpscaleMessage(m) {
+		switch (m.type) {
+			case 'upscale-engine':
+				if (engineWaiter) { const w = engineWaiter; engineWaiter = null; w(m); }
+				break;
+			case 'upscale-progress': setProgress(m.text || ''); break;
+			case 'upscaled': {
+				if (!up || up.cancelled || m.job !== up.job) break;
+				const img = new Image();
+				img.onload = () => { if (up && m.job === up.job) up.results.set(parseInt(m.id, 10), img); };
+				img.onerror = () => { if (up && m.job === up.job) { POPUP().hide(); toast('Could not read the upscaled layer', 'error'); cancelUpscale(); } };
+				img.src = m.url;
+				break;
+			}
+			case 'upscale-done': {
+				if (!up || up.cancelled || m.job !== up.job) break;
+				const esperado = imageLayers().length;
+				const espera = () => {
+					if (!up) return;
+					const prontos = [...up.results.values()].filter((i) => i.complete && i.naturalWidth > 0).length;
+					if (prontos >= esperado) applyUpscale().catch((e) => { POPUP().hide(); toast('Upscale failed: ' + e.message, 'error'); up = null; });
+					else setTimeout(espera, 60);
+				};
+				setProgress('Applying…');
+				espera();
+				break;
+			}
+			case 'upscale-error':
+				if (engineWaiter) { const w = engineWaiter; engineWaiter = null; w({ ready: false }); }
+				POPUP().hide();
+				if (up && !up.cancelled) toast('Upscale: ' + (m.text || 'error'), 'error');
+				up = null;
+				break;
+		}
 	}
 
 	// ---------- painéis ----------
@@ -484,6 +673,15 @@
 				if (!sc) { sc = document.createElement('span'); sc.className = 'shortcut'; a.appendChild(sc); }
 				sc.textContent = label;
 			}
+			if (parent === 'Image' && !ul.querySelector('.array-menu-item')) {
+				const resize = [...ul.querySelectorAll('li > a')].find((a) => (a.querySelector('.name') || {}).textContent === 'Resize');
+				if (resize) {
+					const li = document.createElement('li');
+					li.innerHTML = '<span class="array-menu-item" role="menuitem" tabindex="-1"><span class="name">Upscale…</span><span class="shortcut">Ctrl+Alt+U</span></span>';
+					li.firstChild.addEventListener('click', () => setTimeout(upscaleDialog, 0));
+					resize.parentElement.after(li);
+				}
+			}
 		};
 		new MutationObserver((muts) => {
 			for (const m of muts) for (const n of m.addedNodes) {
@@ -535,6 +733,7 @@
 		'ctrl+alt+shift+l': () => run('image/auto_adjust', 'auto_adjust'),
 		'ctrl+alt+shift+b': () => run('effects/black_and_white', 'black_and_white'),
 		'ctrl+alt+i': () => run('image/resize', 'resize'), 'ctrl+alt+c': () => run('image/size', 'size'),
+		'ctrl+alt+u': () => upscaleDialog(),
 		'ctrl+alt+shift+i': () => run('image/information', 'information'),
 		'shift+f5': () => run('tools/content_fill', 'content_fill'),
 		// vista
@@ -563,15 +762,30 @@
 		return parts.join('+');
 	}
 	function onKeyDown(e) {
-		if (!e.isTrusted || isTyping(e.target)) return;
+		if (!e.isTrusted) return;
 		const combo = comboOf(e);
+		if (isTyping(e.target) && !visiblePopup()) return;
+		if (isTyping(e.target) && visiblePopup() && combo !== 'enter' && combo !== 'escape') return;
 		if (combo === 'space') {                       // mão enquanto segura o espaço
 			if (!spaceHeld) { spaceHeld = true; document.body.classList.add('array-hand'); }
 			e.preventDefault();
 			e.stopImmediatePropagation();
 			return;
 		}
-		if (popupOpen() && combo.length === 1) return;   // com um diálogo aberto, letras soltas não trocam de ferramenta
+		const pop = visiblePopup();
+		if (pop) {                                       // diálogo aberto = modal: Enter confirma, Esc cancela, o resto fica nele
+			if (combo === 'enter' && e.target.tagName !== 'TEXTAREA') {
+				const botao = pop.querySelector('[data-id="popup_ok"]');
+				if (visivel(botao)) { e.preventDefault(); e.stopImmediatePropagation(); botao.click(); }
+			} else if (combo === 'escape') {
+				const botao = pop.querySelector('[data-id="popup_cancel"]'), fechar = pop.querySelector('.close');
+				const alvo = visivel(botao) ? botao : fechar;
+				if (alvo) { e.preventDefault(); e.stopImmediatePropagation(); alvo.click(); }
+			} else if (!isTyping(e.target) && e.target.tagName !== 'SELECT') {
+				e.stopImmediatePropagation();           // nem os atalhos do miniPaint
+			}
+			return;
+		}
 		const act = KEYMAP[combo];
 		if (!act) return;
 		e.preventDefault();
@@ -590,6 +804,7 @@
 		if (!host) return;
 		host.addEventListener('message', (ev) => {
 			const m = ev.data || {};
+			if (String(m.type).startsWith('upscale')) { onUpscaleMessage(m); return; }
 			switch (m.type) {
 				case 'open': openFromHost(m).catch((err) => toast('Could not open: ' + err.message, 'error')); break;
 				case 'save-path': onSavePath(m.path); break;
@@ -681,10 +896,11 @@
 	function trackChanges() {
 		const orig = State.do_action.bind(State);
 		const soTroca = (act) => /activate_tool/i.test(String(act && (act.action_id || (act.constructor && act.constructor.name))));
-		State.do_action = async function (...a) { const r = await orig(...a); if (!soTroca(a[0])) markDirty(); refreshBlendRow(); return r; };
+		const infoSize = () => { try { G.GUI_information.show_size(); } catch (e) { /* painel Info fechado */ } };   // o miniPaint só atualiza o tamanho ao mover o mouse
+		State.do_action = async function (...a) { const r = await orig(...a); if (!soTroca(a[0])) markDirty(); refreshBlendRow(); infoSize(); return r; };
 		for (const fn of ['undo', 'redo']) {
 			const o = State[fn].bind(State);
-			State[fn] = async function (...a) { const r = await o(...a); markDirty(); refreshBlendRow(); return r; };
+			State[fn] = async function (...a) { const r = await o(...a); markDirty(); refreshBlendRow(); infoSize(); return r; };
 		}
 	}
 

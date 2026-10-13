@@ -47,7 +47,7 @@ _comum=('python' 'python-gobject' 'gtk4' 'libadwaita' 'webkitgtk-6.0' 'xdg-utils
 _noty=('hunspell' 'enchant')
 _artry=('python-docx' 'python-markdown' 'fontconfig')
 _volury=('python-markdown')
-_array=()
+_array=('libvips')      # vips: o Lanczos do Upscale
 
 # instala um app: arquivos, lançador, .desktop, ícones, tipos de arquivo
 _instalar_app() {

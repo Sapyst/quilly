@@ -90,6 +90,21 @@ until you convert them to raster, and text and shapes stay vector until then.
 Keys that Photoshop uses for tools Array does not have (Lasso `L`, Magic Wand `W`, Healing `J`, …) do nothing
 instead of triggering something else. The full list is in the app: Help → Keyboard Shortcuts.
 
+### Upscale (Lanczos or AI)
+
+Image → **Upscale…** (`Ctrl+Alt+U`) enlarges the whole document 2×, 3× or 4×: image layers go through the engine,
+text and shapes are rescaled and stay editable, and the result is one undo step.
+
+- **Lanczos**: the classic sharp resampling, done by libvips in a fraction of a second.
+- **AI – fine detail**: Real-ESRGAN (`realesrgan-x4plus` for photos, `realesrgan-x4plus-anime` for drawings)
+  on the GPU through Vulkan. The first use offers to download the official engine release (45 MB) into
+  `~/.local/share/arch-quilly/array/realesrgan/`; a system-wide `realesrgan-ncnn-vulkan` is used if present.
+
+Both run as a separate process that starts, works and exits: nothing stays loaded while you edit (the AI takes
+about 1.5 GB of RAM and some VRAM only while it runs, a few seconds per layer on an RTX). Temporary files live in
+`~/.cache/arch-quilly/array/upscale/` (disk, not RAM) and are removed afterwards. To keep the editor light, a layer
+is limited to 8192 px per side and 40 megapixels; the dialog shows the resulting sizes before you confirm.
+
 ## Where things are
 
 - Data: `~/.local/share/arch-quilly/<app>/` (settings, Noty's theme, recent files). Logs: `~/.cache/arch-quilly/<app>.log`.
