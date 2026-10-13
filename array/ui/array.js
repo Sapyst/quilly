@@ -521,6 +521,24 @@
 	const panelEl = (name) => document.querySelector('.array-panel[data-panel="' + name + '"]');
 	const dockEl = (side) => document.getElementById('array_dock_' + side);
 	let drag = null, suppressClick = false, slot = null;
+	const FLUID = 'cubic-bezier(0.22, 1.2, 0.36, 1)';
+	// FLIP: mede os painéis, aplica a mudança no DOM e anima cada um do lugar antigo pro novo (deslizam, não pulam)
+	function flip(fn, opts = {}) {
+		const alvos = [...document.querySelectorAll('.array-panel')].filter((p) => !opts.skip || p !== opts.skip);
+		const antes = new Map(alvos.map((p) => [p, p.getBoundingClientRect()]));
+		const r = fn();
+		if (!motion()) return r;
+		for (const p of alvos) {
+			const a = antes.get(p), b = p.getBoundingClientRect();
+			if (!a.width || !b.width) continue;
+			const dx = a.left - b.left, dy = a.top - b.top, sx = a.width / b.width, sy = a.height / b.height;
+			if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(sx - 1) < 0.01 && Math.abs(sy - 1) < 0.01) continue;
+			p.style.transformOrigin = 'top left';
+			p.animate([{ transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})` }, { transform: 'none' }],
+				{ duration: opts.duration || 300, easing: opts.easing || FLUID });
+		}
+		return r;
+	}
 	function floatPanel(p, x, y) {
 		document.body.appendChild(p);
 		p.classList.add('array-floating');
@@ -542,52 +560,95 @@
 			const dentro = x >= r.left - zona && x <= r.right + zona && y >= r.top - 10 && y <= r.bottom + 10;
 			const borda = !d.childElementCount && (side === 'left' ? x < 44 : x > window.innerWidth - 44);
 			if (!dentro && !borda) continue;
-			const filhos = [...d.children].filter((c) => c !== dragged && c.classList.contains('array-panel'));
+			// posições pelo layout (offsetTop), não pelo retângulo na tela: os vizinhos podem estar no meio de uma
+			// animação de deslize (transform), e o alvo não pode mudar por causa dela
+			const filhos = [...d.children].filter((c) => c !== dragged && c.classList.contains('array-panel') && !c.classList.contains('hidden-panel'));
 			let index = filhos.length;
 			for (let i = 0; i < filhos.length; i++) {
-				const fr = filhos[i].getBoundingClientRect();
-				if (y < fr.top + fr.height / 2) { index = i; break; }
+				const meio = r.top - d.scrollTop + filhos[i].offsetTop + filhos[i].offsetHeight / 2;
+				if (y < meio) { index = i; break; }
 			}
-			return { dock: d, side, before: filhos[index] || null };
+			return { dock: d, side, before: filhos[index] || null, index };
 		}
 		return null;
 	}
 	function showSlot(target) {
 		if (!slot) { slot = document.createElement('div'); slot.className = 'array-slot'; }
-		if (!target) { slot.classList.remove('on'); if (slot.parentElement) slot.remove(); return; }
-		if (slot.parentElement !== target.dock || slot.nextElementSibling !== target.before) {
-			target.dock.insertBefore(slot, target.before);
+		if (!target) {
+			if (slot.parentElement) flip(() => { slot.remove(); }, { skip: drag && drag.panel });
+			slot.classList.remove('on'); slot.style.height = '0px';
+			return;
 		}
-		requestAnimationFrame(() => slot.classList.add('on'));
+		if (slot.parentElement !== target.dock || slot.nextElementSibling !== target.before) {
+			flip(() => { target.dock.insertBefore(slot, target.before); }, { skip: drag.panel });
+		}
+		const altura = Math.min(drag.rect.height, 420);
+		requestAnimationFrame(() => { slot.classList.add('on'); slot.style.height = altura + 'px'; });
 	}
 	function startDrag(e) {
 		drag.moved = true; suppressClick = true;
 		const p = drag.panel, r = drag.rect;
 		drag.dx = drag.startX - r.left; drag.dy = drag.startY - r.top;
 		try { window.getSelection().removeAllRanges(); } catch (err) { /* sem seleção */ }
-		floatPanel(p, r.left, r.top);
+		flip(() => floatPanel(p, r.left, r.top), { skip: p });
 		p.classList.add('array-lift');
 		document.body.classList.add('array-dragging');
+		drag.pos = { x: r.left, y: r.top }; drag.alvo = { x: r.left, y: r.top }; drag.vx = 0;
+		drag.loop = requestAnimationFrame(seguir);
+	}
+	// o painel escorre atrás do ponteiro (inércia) e inclina um pouco conforme a velocidade: fluido, não rígido
+	function seguir() {
+		if (!drag || !drag.moved) return;
+		const p = drag.panel, k = motion() ? 0.38 : 1;
+		let ax = drag.alvo.x, ay = drag.alvo.y;
+		if (drag.target && slot && slot.parentElement) {               // ímã: puxa um pouco pra fenda
+			const sr = slot.getBoundingClientRect();
+			ax += (sr.left - ax) * 0.22; ay += (sr.top - ay) * 0.22;
+		}
+		const nx = drag.pos.x + (ax - drag.pos.x) * k, ny = drag.pos.y + (ay - drag.pos.y) * k;
+		drag.vx = nx - drag.pos.x;
+		drag.pos = { x: nx, y: ny };
+		p.style.left = Math.round(nx) + 'px'; p.style.top = Math.round(ny) + 'px';
+		const tilt = Math.max(-2.2, Math.min(2.2, drag.vx * 0.12));
+		p.style.transform = motion() ? `scale(1.015) rotate(${tilt.toFixed(2)}deg)` : '';
+		drag.loop = requestAnimationFrame(seguir);
 	}
 	function moveDrag(e) {
-		const p = drag.panel;
-		p.style.left = Math.round(e.clientX - drag.dx) + 'px'; p.style.top = Math.round(e.clientY - drag.dy) + 'px';
-		drag.target = findSlot(e.clientX, e.clientY, p);
+		drag.alvo = { x: e.clientX - drag.dx, y: e.clientY - drag.dy };
+		drag.target = findSlot(e.clientX, e.clientY, drag.panel);
 		showSlot(drag.target);
 	}
 	function endDrag(e) {
 		const p = drag.panel, t = drag.target;
+		cancelAnimationFrame(drag.loop);
 		document.body.classList.remove('array-dragging');
 		p.classList.remove('array-lift');
-		showSlot(null);
+		p.style.transform = '';
 		if (t) {
+			const antes = p.getBoundingClientRect();
+			if (slot && slot.parentElement) { slot.remove(); slot.classList.remove('on'); slot.style.height = '0px'; }
 			t.dock.insertBefore(p, t.before);
 			unfloat(p);
-			p.classList.add('array-attach');
-			setTimeout(() => p.classList.remove('array-attach'), 260);
+			const depois = p.getBoundingClientRect();
+			if (motion()) {
+				const dx = antes.left - depois.left, dy = antes.top - depois.top, sx = antes.width / depois.width;
+				p.style.transformOrigin = 'top left';
+				p.animate([
+					{ transform: `translate(${dx}px, ${dy}px) scale(${sx}, 1)`, boxShadow: '0 26px 70px rgba(0,0,0,0.75)' },
+					{ transform: `translate(${dx * 0.12}px, ${dy * 0.12}px) scale(1.03, 0.94)`, offset: 0.72 },
+					{ transform: 'scale(0.99, 1.02)', offset: 0.88 },
+					{ transform: 'none', boxShadow: '0 0 0 rgba(0,0,0,0)' },
+				], { duration: 480, easing: 'cubic-bezier(0.2, 0.9, 0.25, 1)' });
+			}
 			status(PANELS[p.dataset.panel] + ' attached to the ' + t.side + ' dock');
 		} else {
+			showSlot(null);
+			const antes = p.getBoundingClientRect();
 			clampFloating(p);
+			const depois = p.getBoundingClientRect();
+			if (motion() && (antes.left !== depois.left || antes.top !== depois.top)) {
+				p.animate([{ transform: `translate(${antes.left - depois.left}px, ${antes.top - depois.top}px)` }, { transform: 'none' }], { duration: 320, easing: FLUID });
+			}
 			status(PANELS[p.dataset.panel] + ' floating');
 		}
 		saveLayout();
@@ -628,29 +689,33 @@
 		l.hidden = [...document.querySelectorAll('.array-panel.hidden-panel')].map((p) => p.dataset.panel);
 		return l;
 	}
-	function saveLayout() { try { localStorage.setItem('array.layout', JSON.stringify(layoutAtual())); } catch (e) { /* sem storage */ } logPanels(); }
+	function saveLayout() { try { localStorage.setItem('array.layout', JSON.stringify(layoutAtual())); } catch (e) { /* sem storage */ } setTimeout(logPanels, 560); }
 	// em ARCH_DEV o console vai pro terminal: posição dos cabeçalhos (pra testes automatizados e depuração)
 	function logPanels() {
 		const pos = {};
 		for (const name in PANELS) { const h = panelEl(name) && panelEl(name).querySelector('h2'); if (h) { const r = h.getBoundingClientRect(); pos[name] = [Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2)]; } }
 		console.log('[array] panels ' + JSON.stringify(pos) + ' view ' + window.innerWidth + 'x' + window.innerHeight);
 	}
-	function applyLayout(l) {
-		for (const side of ['left', 'right']) for (const name of l[side] || []) { const p = panelEl(name); if (p) { unfloat(p); dockEl(side).appendChild(p); } }
-		for (const name in (l.floating || {})) { const p = panelEl(name); if (p) { floatPanel(p, l.floating[name][0], l.floating[name][1]); clampFloating(p); } }
-		for (const name in PANELS) showPanel(name, !(l.hidden || []).includes(name), false);
+	function applyLayout(l, animado = true) {
+		const aplicar = () => {
+			for (const side of ['left', 'right']) for (const name of l[side] || []) { const p = panelEl(name); if (p) { unfloat(p); dockEl(side).appendChild(p); } }
+			for (const name in (l.floating || {})) { const p = panelEl(name); if (p) { floatPanel(p, l.floating[name][0], l.floating[name][1]); clampFloating(p); } }
+			for (const name in PANELS) showPanel(name, !(l.hidden || []).includes(name), false);
+		};
+		if (animado) flip(aplicar, { duration: 420 }); else aplicar();
 		relayout();
 	}
 	function loadLayout() {
 		let l = null;
 		try { l = JSON.parse(localStorage.getItem('array.layout') || 'null'); } catch (e) { l = null; }
-		if (l && Array.isArray(l.left) && Array.isArray(l.right)) applyLayout(l);
+		if (l && Array.isArray(l.left) && Array.isArray(l.right)) applyLayout(l, false);
 	}
 	function resetLayout() { applyLayout(JSON.parse(JSON.stringify(LAYOUT_PADRAO))); saveLayout(); status('Default layout'); }
 	function showPanel(name, on, save = true) {
 		const p = panelEl(name);
 		if (!p) return;
-		p.classList.toggle('hidden-panel', !on);
+		if (save) flip(() => p.classList.toggle('hidden-panel', !on), { skip: p }); else p.classList.toggle('hidden-panel', !on);
+		if (on && save && motion()) p.animate([{ opacity: 0, transform: 'scale(0.96)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: FLUID });
 		if (save) { saveLayout(); relayout(); }
 	}
 	// menu "Window": mostrar/esconder painéis, restaurar o padrão

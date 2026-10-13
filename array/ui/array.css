@@ -22,7 +22,7 @@
 	--button-background-color-active: #324560;
 	--button-shadow-color: rgba(0, 0, 0, 0);
 	--button-text-color-active: #dbe8fa;
-	--button-border-radius: 4px;
+	--button-border-radius: 7px;
 	--button-toggle-background-color: #3a3c43;
 	--button-toggle-background-color-hover: #44474f;
 	--input-background-color: #16171a;
@@ -30,7 +30,7 @@
 	--input-text-color: #e2e4e8;
 	--input-border-color: #34363c;
 	--input-border-color-active: var(--accent);
-	--input-border-radius: 4px;
+	--input-border-radius: 7px;
 	--input-group-border-color: #34363c;
 	--menu-background-color: #1e1f23;
 	--menu-icons-filter: invert(0.82);
@@ -120,8 +120,8 @@ label { color: var(--text-color-muted); }
 .main_menu > ul.menu_bar > li > a:focus { box-shadow: 0 -2px var(--accent) inset; }
 .main_menu > ul.menu_dropdown {
 	min-width: 220px;
-	padding: 5px 0;
-	border-radius: 6px;
+	padding: 6px 0;
+	border-radius: 10px;
 	box-shadow: 0 0 0 1px var(--menu-dropdown-border-color), 0 12px 32px rgba(0, 0, 0, 0.55);
 }
 .main_menu > ul.menu_dropdown > li > a { height: 27px; line-height: 27px; padding: 0 14px; font-size: 12.5px; }
@@ -183,6 +183,7 @@ label { color: var(--text-color-muted); }
 
 /* ---------- docks and panels (array.js: drag by the header, snap into a dock, or float) ---------- */
 .array-dock {
+	position: relative;
 	display: flex;
 	flex-direction: column;
 	gap: 6px;
@@ -216,21 +217,22 @@ body.array-dragging .array-dock:empty { width: 30px; padding: 6px; border-color:
 body.array-dragging, body.array-dragging .array-panel > h2.array-grip { cursor: grabbing !important; }
 body.array-dragging .middle_area { pointer-events: none; }
 body.array-dragging, body.array-dragging * { user-select: none !important; -webkit-user-select: none !important; }
-.array-floating { position: fixed; z-index: 60; box-shadow: 0 0 0 1px #0d0d10, 0 14px 40px rgba(0, 0, 0, 0.6); margin: 0; }
+.array-floating { position: fixed; z-index: 60; box-shadow: 0 0 0 1px #0d0d10, 0 14px 40px rgba(0, 0, 0, 0.6); margin: 0; border-radius: 14px; will-change: transform; }
 .array-floating.array-panel.layers { height: 320px; display: flex; flex-direction: column; }
 .array-floating.array-panel.layers .content { flex: 1; overflow-y: auto; }
-.array-slot { height: 0; border-radius: 3px; background: var(--accent); opacity: 0; flex-shrink: 0; transition: height 120ms ease-out, opacity 120ms ease-out; }
-.array-slot.on { height: 4px; opacity: 1; }
-.array-attach { animation: array-attach 200ms ease-out; }
-@keyframes array-attach { 0% { transform: scale(0.97); } 60% { transform: scale(1.012); } 100% { transform: none; } }
+/* a fenda: um espaço do tamanho do painel, que se abre feito líquido e os vizinhos deslizam em volta */
+.array-slot { height: 0; min-width: 76px; border-radius: 12px; background: rgba(107, 159, 224, 0.16); border: 1px dashed rgba(107, 159, 224, 0.75); box-sizing: border-box; opacity: 0; flex-shrink: 0; transition: height 260ms cubic-bezier(0.22, 1.2, 0.36, 1), opacity 160ms ease-out; }
+.array-slot.on { opacity: 1; }
+.array-attach { animation: array-attach 420ms cubic-bezier(0.22, 1.2, 0.36, 1); }
+@keyframes array-attach { 0% { transform: scale(1.03, 0.94); } 45% { transform: scale(0.985, 1.025); } 100% { transform: none; } }
 .array-panel.hidden-panel { display: none; }
 
 /* o menu Window (nosso) na barra de menus */
 .main_menu > ul.menu_bar > li > .array-menu-top { display: flex; align-items: center; font-size: 12.5px; color: var(--menu-text-color); padding: 0 11px; height: 100%; cursor: pointer; }
 .main_menu > ul.menu_bar > li > .array-menu-top:hover, .main_menu > ul.menu_bar > li > .array-menu-top.open { background: #2a2b30; color: #fff; }
 .array-window-menu {
-	position: fixed; z-index: 120; min-width: 200px; padding: 5px 0; margin: 0; list-style: none;
-	background: var(--menu-dropdown-background-color); border-radius: 6px;
+	position: fixed; z-index: 120; min-width: 200px; padding: 6px 0; margin: 0; list-style: none;
+	background: var(--menu-dropdown-background-color); border-radius: 10px;
 	box-shadow: 0 0 0 1px var(--menu-dropdown-border-color), 0 12px 32px rgba(0, 0, 0, 0.55);
 }
 .array-window-menu li { display: flex; align-items: center; height: 27px; padding: 0 14px 0 12px; font-size: 12.5px; color: var(--menu-dropdown-text-color); cursor: pointer; }
@@ -258,7 +260,7 @@ body.array-dragging, body.array-dragging * { user-select: none !important; -webk
 	width: 32px;
 	height: 32px;
 	margin: 0;
-	border-radius: 5px;
+	border-radius: 9px;
 	background: transparent;
 }
 .sidebar_left .item:after { background-size: 19px 19px; opacity: 0.9; }
@@ -271,7 +273,8 @@ body.array-dragging, body.array-dragging * { user-select: none !important; -webk
 .sidebar_left .array-sep { width: 100%; height: 1px; background: var(--border-color); margin: 3px 0; }
 
 /* ---------- canvas area ---------- */
-.middle_area, .main_wrapper { background: #121316; }
+.middle_area { background: #121316; border-radius: 14px; margin: 6px; overflow: hidden; }
+.main_wrapper { background: #121316; }
 .loaded .canvas_wrapper canvas { border: 1px solid #000; }
 .canvas_wrapper { box-shadow: 0 0 0 1px #2a2b30, 0 10px 30px rgba(0, 0, 0, 0.55); }
 .ruler_left, .ruler_top { background: #26272c; }
@@ -287,9 +290,10 @@ body.array-zoom.array-zoom-out #main_wrapper, body.array-zoom.array-zoom-out #ca
 .block, .sidebar_right .block {
 	background: var(--block-background-color);
 	border: 1px solid var(--border-color);
-	border-radius: 6px;
+	border-radius: 12px;
 	box-shadow: none;
 	margin-bottom: 0;
+	overflow: hidden;
 }
 .block h2 {
 	font-size: 11px;
@@ -298,8 +302,8 @@ body.array-zoom.array-zoom-out #main_wrapper, body.array-zoom.array-zoom-out #ca
 	text-transform: uppercase;
 	color: var(--text-color-muted);
 	background: transparent;
-	padding: 6px 10px 5px 10px;
-	border-radius: 6px 6px 0 0;
+	padding: 7px 10px 6px 10px;
+	border-radius: 12px 12px 0 0;
 }
 .block h2.toggle:before { right: 10px; top: 11px; border-width: 0 3.5px 4.5px 3.5px; }
 .block h2.toggled:before { border-width: 4.5px 3.5px 0 3.5px; }
@@ -325,7 +329,7 @@ body.array-zoom.array-zoom-out #main_wrapper, body.array-zoom.array-zoom-out #ca
 .layers_list .layer_name {
 	background: var(--area-background-color);
 	border: 1px solid var(--border-color);
-	border-radius: 4px;
+	border-radius: 7px;
 	color: var(--text-color);
 	height: 22px;
 	padding: 2px 7px 3px 7px;
@@ -352,7 +356,7 @@ body.array-zoom.array-zoom-out #main_wrapper, body.array-zoom.array-zoom-out #ca
 #popups .popup {
 	background: #202126;
 	border: 1px solid #3a3c43;
-	border-radius: 8px;
+	border-radius: 14px;
 	box-shadow: 0 0 0 4000px rgba(0, 0, 0, 0.45), 0 20px 60px rgba(0, 0, 0, 0.6);
 	font-size: 12.5px;
 	padding-top: 4.2rem;
@@ -435,9 +439,9 @@ body.array-panels-hidden .array-dock, body.array-panels-hidden .array-floating {
 
 /* ---------- motion: everything moves a little (our style, not a rigid toolbox) ---------- */
 @media (prefers-reduced-motion: no-preference) {
-	.array-panel { transition: transform 160ms ease-out, box-shadow 160ms ease-out, opacity 160ms ease-out; }
-	.array-floating.array-lift { transform: scale(1.015); box-shadow: 0 0 0 1px var(--accent), 0 22px 60px rgba(0, 0, 0, 0.7); }
-	.array-floating { transition: box-shadow 160ms ease-out, transform 160ms ease-out; }
+	.array-panel { transition: box-shadow 200ms ease-out, opacity 160ms ease-out, border-radius 200ms ease-out; }
+	.array-floating.array-lift { box-shadow: 0 0 0 1px var(--accent), 0 26px 70px rgba(0, 0, 0, 0.75); }
+	.array-floating { transition: box-shadow 200ms ease-out; }
 	.sidebar_left .item { transition: background-color 120ms ease-out, transform 120ms ease-out, box-shadow 120ms ease-out; }
 	.sidebar_left .item:hover { transform: translateY(-1px); }
 	.sidebar_left .item.active { animation: array-tool-pop 220ms ease-out; }
