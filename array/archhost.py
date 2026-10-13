@@ -17,6 +17,7 @@ de dados (XDG), abrir arquivos/pastas no app padrão.
 import json
 import mimetypes
 import os
+import secrets
 import subprocess
 import sys
 
@@ -84,19 +85,21 @@ class Host(Adw.ApplicationWindow):
     SEM_BORDA = True             # True = o app desenha a própria barra em HTML; False = barra nativa fina
     ESCURO = True                # os apps da suíte foram desenhados escuros
     FUNDO = "#14171A"            # cor de fundo enquanto a página carrega
+    MEMORIA_MB = 0               # > 0: teto de memória do processo web (o WebKit solta caches antes de chegar lá)
 
     def __init__(self, app, **kw):
         super().__init__(application=app, title=self.TITULO, default_width=self.TAMANHO[0],
                          default_height=self.TAMANHO[1], **kw)
         if self.ESCURO:
             Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
-        self.registrar_esquema()
+        contexto = self.contexto()
+        self.registrar_esquema(contexto)
         gerente = WebKit.UserContentManager()
         gerente.add_script(WebKit.UserScript.new(PONTE_JS, WebKit.UserContentInjectedFrames.TOP_FRAME,
                                                  WebKit.UserScriptInjectionTime.START, None, None))
         gerente.register_script_message_handler("host", None)
         gerente.connect("script-message-received::host", self._mensagem)
-        self.web = WebKit.WebView(user_content_manager=gerente)
+        self.web = WebKit.WebView(user_content_manager=gerente, web_context=contexto)
         cfg = self.web.get_settings()
         cfg.set_enable_developer_extras(bool(os.environ.get("ARCH_DEV")))
         cfg.set_javascript_can_access_clipboard(True)
@@ -124,21 +127,38 @@ class Host(Adw.ApplicationWindow):
             self.add_css_class("archhost")
         self.carregado = False
         self._fila = []
+        self.destinos = {}            # token -> caminho: downloads que a página pode gravar (ver baixar_para)
+        self.web.get_network_session().connect("download-started", self._download)
         self.web.connect("load-changed", self._carregou)
         self.web.load_uri(f"app://{self.NOME}/{self.PAGINA}")
 
     # ---------- servir a interface ----------
-    def registrar_esquema(self):
-        if "app" in _esquemas:
+    _contextos = {}
+
+    def contexto(self):
+        """O contexto web do app. Com MEMORIA_MB, um contexto próprio com teto de memória: o WebKit começa a
+        soltar caches (imagens decodificadas, JIT) ao chegar perto e nunca passa do limite."""
+        if not self.MEMORIA_MB:
+            return WebKit.WebContext.get_default()
+        if self.NOME not in Host._contextos:
+            pressao = WebKit.MemoryPressureSettings.new()
+            pressao.set_memory_limit(int(self.MEMORIA_MB))
+            pressao.set_strict_threshold(0.75)     # (o estrito antes: o conservador tem de ser menor que ele)
+            pressao.set_conservative_threshold(0.5)
+            pressao.set_kill_threshold(0.0)        # 0 = nunca mata o processo (só aperta)
+            Host._contextos[self.NOME] = WebKit.WebContext(memory_pressure_settings=pressao)
+        return Host._contextos[self.NOME]
+
+    def registrar_esquema(self, ctx):
+        if id(ctx) in _esquemas:
             return
-        _esquemas.add("app")
-        ctx = WebKit.WebContext.get_default()
+        _esquemas.add(id(ctx))
         ctx.register_uri_scheme("app", Host._servir)
         ctx.get_security_manager().register_uri_scheme_as_secure("app")
         ctx.get_security_manager().register_uri_scheme_as_cors_enabled("app")
 
     _pastas = {}
-    _dinamicos = {}        # nome -> função(caminho) -> (bytes, mime) | None   (arquivos gerados na hora)
+    _dinamicos = {}        # nome -> função(caminho) -> (bytes, mime) | (caminho_de_arquivo, mime) | None
 
     @classmethod
     def _servir(cls, req):
@@ -151,7 +171,11 @@ class Host(Adw.ApplicationWindow):
             r = dinamico(caminho)
             if r:
                 dados_, mime = r
-                req.finish(Gio.MemoryInputStream.new_from_bytes(GLib.Bytes.new(dados_)), len(dados_), mime)
+                if isinstance(dados_, str):                   # caminho de arquivo: o WebKit lê do disco, em fluxo
+                    arquivo = Gio.File.new_for_path(dados_)
+                    req.finish(arquivo.read(None), os.path.getsize(dados_), mime)
+                else:
+                    req.finish(Gio.MemoryInputStream.new_from_bytes(GLib.Bytes.new(dados_)), len(dados_), mime)
                 return
         base = cls._pastas.get(nome)
         alvo = os.path.realpath(os.path.join(base or "", caminho))
@@ -168,12 +192,17 @@ class Host(Adw.ApplicationWindow):
             Host._pastas[cls.NOME] = cls.PASTA_UI
 
     def _politica(self, _web, decisao, tipo):
-        """Links externos (http...) abrem no navegador do sistema, não dentro do app."""
+        """Links externos (http...) abrem no navegador do sistema, não dentro do app. Um blob: com atributo
+        download vira um download do WebKit (gravado onde baixar_para mandou), nunca navegação."""
         if tipo == WebKit.PolicyDecisionType.NAVIGATION_ACTION or tipo == WebKit.PolicyDecisionType.NEW_WINDOW_ACTION:
-            uri = decisao.get_navigation_action().get_request().get_uri()
+            acao = decisao.get_navigation_action()
+            uri = acao.get_request().get_uri()
             if uri.startswith(("http://", "https://", "mailto:")):
                 abrir_externo(uri)
                 decisao.ignore()
+                return True
+            if uri.startswith("blob:") and (acao.get_navigation_type() == WebKit.NavigationType.LINK_CLICKED):
+                decisao.download()
                 return True
         return False
 
@@ -184,6 +213,41 @@ class Host(Adw.ApplicationWindow):
                 self.enviar(m)
             self._fila.clear()
             self.ao_carregar()
+
+    # ---------- gravar arquivos pelo WebKit (download de um blob, em fluxo, sem base64 na ponte) ----------
+    # A página cria <a download="array-token-<token>" href="blob:..."> e clica; o token foi dado antes pelo app
+    # (baixar_para) junto com o destino. Qualquer outro download é recusado.
+    def baixar_para(self, caminho):
+        token = secrets.token_urlsafe(12)
+        self.destinos[token] = caminho
+        return token
+
+    def _download(self, _sessao, download):
+        def destino(d, nome):
+            # o WebKit acrescenta a extensão do MIME ao nome sugerido (array-token-xxx.png): fica só o token
+            token = (nome or "").removeprefix("array-token-").split(".", 1)[0]
+            caminho = self.destinos.pop(token, None) if nome and nome.startswith("array-token-") else None
+            if not caminho:
+                d.cancel()
+                return True
+            d.set_allow_overwrite(True)
+            d.set_destination(caminho)
+            d._caminho = caminho
+            return True
+        def falhou(d, erro):
+            d._falhou = True
+            if os.environ.get("ARCH_DEV"):
+                print(f"[archhost] download falhou destino={d.get_destination()!r}: {erro}", file=sys.stderr)
+            self.ao_gravar(getattr(d, "_caminho", None), erro)
+        def terminou(d):   # 'finished' também vem depois de 'failed': só avisa o sucesso
+            if not getattr(d, "_falhou", False):
+                self.ao_gravar(getattr(d, "_caminho", None), None)
+        download.connect("decide-destination", destino)
+        download.connect("failed", falhou)
+        download.connect("finished", terminou)
+
+    def ao_gravar(self, caminho, erro):
+        """Pra sobrescrever: um arquivo pedido com baixar_para terminou (erro = None) ou falhou."""
 
     # ---------- ponte ----------
     def _mensagem(self, _gerente, valor):

@@ -384,17 +384,11 @@
 				if (!r.ready) { POPUP().hide(); toast('The AI engine could not be installed', 'error'); return; }
 			}
 		}
-		up = { job: String(Date.now()), scale, method, results: new Map(), cancelled: false };
+		up = { job: String(Date.now()), scale, method, model, results: new Map(), cancelled: false, pendentes: new Set() };
 		progressPopup('Preparing layers…');
-		const items = [];
-		for (const l of imageLayers()) {
-			const c = layerBitmap(l);
-			const blob = await new Promise((ok) => c.toBlob(ok, 'image/png'));
-			items.push({ id: l.id, data: await blobToBase64(blob) });
-		}
-		if (!up || up.cancelled) return;
-		setProgress(method === 'ai' ? 'AI · starting the engine…' : 'Lanczos…');
-		send({ type: 'upscale', job: up.job, method, scale, model, items });
+		const ids = imageLayers().map((l) => l.id);
+		for (const id of ids) up.pendentes.add(String(id));
+		send({ type: 'upscale-tokens', job: up.job, ids });                   // volta como upscale-tokens {tokens}
 	}
 	function askEngineInstall() {
 		return new Promise((resolve) => { engineWaiter = resolve; send({ type: 'upscale-engine-install' }); });
@@ -406,7 +400,9 @@
 		const after = { link: img, link_canvas: null, width_original: img.width, height_original: img.height,
 			width: Math.round(layer.width * s), height: Math.round(layer.height * s), x: Math.round(layer.x * s), y: Math.round(layer.y * s) };
 		const apply = (v) => { const l = L.get_layer(id); if (l) Object.assign(l, v); cfg.need_render = true; };
-		return { action_id: 'array_upscale_layer', action_description: 'Upscale layer', is_done: false, memory_estimate: 0, database_estimate: 0,
+		const bytes = (img) => (img && img.width ? img.width * img.height * 4 : 0);
+		return { action_id: 'array_upscale_layer', action_description: 'Upscale layer', is_done: false,
+			memory_estimate: bytes(before.link) + bytes(before.link_canvas), database_estimate: 0,
 			async do() { apply(after); this.is_done = true; }, async undo() { apply(before); this.is_done = false; },
 			free() { before.link = before.link_canvas = null; } };
 	}
@@ -423,7 +419,8 @@
 			}
 		}
 		actions.push(...resize.resize_gui({ width_percent: s * 100, height_percent: s * 100 }));
-		const bundle = { action_id: 'array_upscale', action_description: 'Upscale', is_done: false, memory_estimate: 0, database_estimate: 0,
+		const bundle = { action_id: 'array_upscale', action_description: 'Upscale', is_done: false, database_estimate: 0,
+			memory_estimate: actions.reduce((t, a) => t + (a.memory_estimate || 0), 0),
 			async do() { for (const a of actions) await a.do(); this.is_done = true; },
 			async undo() { for (const a of actions.slice().reverse()) await a.undo(); this.is_done = false; },
 			async free() { for (const a of actions) if (a.free) await a.free(); } };
@@ -434,8 +431,28 @@
 		status(`Upscaled ${s}x (${up.method === 'ai' ? 'AI' : 'Lanczos'}): ${cfg.WIDTH} × ${cfg.HEIGHT} px`, 3000);
 		up = null;
 	}
+	async function upscaleTokens(m) {
+		if (!up || up.cancelled || m.job !== up.job) return;
+		for (const l of imageLayers()) {
+			const token = m.tokens[String(l.id)];
+			if (!token) continue;
+			const c = layerBitmap(l);
+			const blob = await new Promise((ok) => c.toBlob(ok, 'image/png'));
+			if (!up || up.cancelled) return;
+			downloadBlob(token, blob);                                        // o WebKit grava em CACHE/<job>/<id>-in.png
+		}
+	}
 	function onUpscaleMessage(m) {
 		switch (m.type) {
+			case 'upscale-tokens': upscaleTokens(m); break;
+			case 'upscale-in-done':
+				if (!up || up.cancelled || m.job !== up.job) break;
+				up.pendentes.delete(String(m.id));
+				if (up.pendentes.size === 0) {
+					setProgress(up.method === 'ai' ? 'AI · starting the engine…' : 'Lanczos…');
+					send({ type: 'upscale', job: up.job, method: up.method, scale: up.scale, model: up.model, items: imageLayers().map((l) => ({ id: l.id })) });
+				}
+				break;
 			case 'upscale-engine':
 				if (engineWaiter) { const w = engineWaiter; engineWaiter = null; w(m); }
 				break;
@@ -820,15 +837,26 @@
 		for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
 		return btoa(bin);
 	}
-	// gera os dados do documento no formato da extensão; devolve base64 (ou null se o formato não dá aqui)
+	// gera os dados do documento no formato da extensão; devolve um Blob (ou null se o formato não dá aqui)
 	async function render(ext) {
-		if (ext === 'array' || ext === 'json') return utf8Base64(FileSave.export_as_json());
+		if (ext === 'array' || ext === 'json') return new Blob([FileSave.export_as_json()], { type: 'application/json' });
 		const mime = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' }[ext];
 		if (!mime) return null;
 		const fillWhite = mime === 'image/jpeg' || cfg.TRANSPARENCY == false;
 		const canvas = flattened(fillWhite);
-		const blob = await new Promise((ok) => canvas.toBlob(ok, mime, 0.92));
-		return blob ? blobToBase64(blob) : null;
+		return new Promise((ok) => canvas.toBlob(ok, mime, 0.92));
+	}
+	// grava um Blob no destino do token: um download com nome "array-token-<token>"; o array.py decide o destino
+	// e o WebKit grava em fluxo (nada de base64 na ponte). A confirmação vem como mensagem 'saved' / 'error'.
+	let anchorDispatch = null, anchorClick = null;
+	function downloadBlob(token, blob) {
+		const a = document.createElement('a');
+		a.download = 'array-token-' + token;
+		a.href = URL.createObjectURL(blob);
+		a.rel = 'noopener';
+		document.body.appendChild(a);
+		(anchorDispatch || HTMLAnchorElement.prototype.dispatchEvent).call(a, new MouseEvent('click'));
+		setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 60000);
 	}
 	function suggestedName(ext) {
 		const base = (doc.name || (cfg.layers[0] && cfg.layers[0].name) || 'untitled').replace(/\.[a-z0-9]+$/i, '');
@@ -837,10 +865,8 @@
 	function save() {
 		const ext = extOf(doc.path || '');
 		if (doc.path && ['array', 'json', 'png', 'jpg', 'jpeg', 'webp'].includes(ext)) {
-			render(ext).then((data) => {
-				if (data) send({ type: 'save', path: doc.path, name: doc.name, data });
-				else saveAs();
-			});
+			pending = { kind: 'doc' };
+			send({ type: 'save-token', path: doc.path, name: doc.name });   // volta como save-path {token, silent}
 			return;
 		}
 		saveAs();
@@ -849,15 +875,18 @@
 		pending = { kind: 'doc' };
 		send({ type: 'save-dialog', name: suggestedName(extOf(doc.path || '') === 'png' ? 'png' : 'array') });
 	}
-	async function onSavePath(path) {
+	// {path, token, silent}: com token o Blob vai por download (gravação em fluxo); sem token, base64 pela ponte
+	async function onSavePath(m) {
 		const p = pending;
 		pending = null;
-		if (!p || !path) return;
-		let data = null;
-		if (p.kind === 'blob') data = await blobToBase64(p.blob);
-		else data = await render(extOf(path));
-		if (!data) { toast('Use File › Export for this format', 'error'); return; }
-		send({ type: 'save', path, name: path.split('/').pop(), data });
+		if (!p || !m.path) return;
+		const ext = extOf(m.path);
+		// Export: o Blob veio no formato do diálogo do miniPaint; se o nome escolhido pede outro formato, gera de novo
+		const mismatch = p.kind === 'blob' && ['png', 'jpg', 'jpeg', 'webp'].includes(ext) && !p.blob.type.includes(ext === 'jpg' ? 'jpeg' : ext);
+		const blob = p.kind === 'blob' && !mismatch ? p.blob : await render(ext);
+		if (!blob) { toast('Use File › Export for this format', 'error'); return; }
+		if (m.token) { downloadBlob(m.token, blob); return; }
+		send({ type: 'save', path: m.path, name: m.path.split('/').pop(), data: await blobToBase64(blob) });
 	}
 	// o Export do miniPaint "baixa" um arquivo (FileSaver cria um <a download> e clica): a gente intercepta o
 	// clique, pega o blob e manda pro diálogo do sistema
@@ -869,23 +898,26 @@
 				send({ type: 'save-dialog', name });
 			}).catch(() => toast('Could not read the exported image', 'error'));
 		};
-		const isDownload = (a) => a.hasAttribute('download') && /^blob:/.test(a.href);
+		const isDownload = (a) => a.hasAttribute('download') && /^blob:/.test(a.href) && !/^array-token-/.test(a.download);
 		const origDispatch = HTMLAnchorElement.prototype.dispatchEvent;
+		anchorDispatch = origDispatch;
 		HTMLAnchorElement.prototype.dispatchEvent = function (ev) {
 			if (ev && ev.type === 'click' && isDownload(this)) { grab(this); return true; }
 			return origDispatch.call(this, ev);
 		};
 		const origClick = HTMLAnchorElement.prototype.click;
+		anchorClick = origClick;
 		HTMLAnchorElement.prototype.click = function () {
 			if (isDownload(this)) { grab(this); return; }
 			return origClick.call(this);
 		};
 	}
 	async function openFromHost(m) {
+		const r = await fetch(m.url || m.data);
 		if (m.kind === 'json') {
-			await FileOpen.load_json(m.data);
+			await FileOpen.load_json(await r.text());
 		} else {
-			const blob = await (await fetch(m.data)).blob();
+			const blob = await r.blob();
 			const file = new File([blob], m.name, { type: blob.type || 'image/png' });
 			await FileOpen.open_handler({ target: { files: [file] } });
 		}
@@ -1098,7 +1130,7 @@
 			if (String(m.type).startsWith('upscale')) { onUpscaleMessage(m); return; }
 			switch (m.type) {
 				case 'open': openFromHost(m).catch((err) => toast('Could not open: ' + err.message, 'error')); break;
-				case 'save-path': onSavePath(m.path); break;
+				case 'save-path': onSavePath(m); break;
 				case 'save-cancel': pending = null; break;
 				case 'saved':
 					doc.path = m.path; doc.name = m.name; doc.dirty = false; setTitle();
@@ -1188,7 +1220,14 @@
 		const orig = State.do_action.bind(State);
 		const soTroca = (act) => /activate_tool/i.test(String(act && (act.action_id || (act.constructor && act.constructor.name))));
 		const infoSize = () => { try { G.GUI_information.show_size(); } catch (e) { /* painel Info fechado */ } };   // o miniPaint só atualiza o tamanho ao mover o mouse
-		State.do_action = async function (...a) { const r = await orig(...a); if (!soTroca(a[0])) markDirty(); refreshBlendRow(); infoSize(); return r; };
+		// teto do histórico em RAM: ações que seguram imagens antigas (upscale etc.) somam; acima do teto, as mais
+		// velhas são liberadas (o miniPaint guarda as próprias edições de pixels no IndexedDB, em disco)
+		const HISTORY_MB = 384;
+		const trimHistory = async () => {
+			const total = State.action_history.reduce((t, x) => t + (x.memory_estimate || 0), 0);
+			if (total > HISTORY_MB * 1048576) { try { await State.free(total - HISTORY_MB * 1048576, 0); } catch (e) { /* histórico já curto */ } }
+		};
+		State.do_action = async function (...a) { const r = await orig(...a); if (!soTroca(a[0])) markDirty(); refreshBlendRow(); infoSize(); trimHistory(); return r; };
 		for (const fn of ['undo', 'redo']) {
 			const o = State[fn].bind(State);
 			State[fn] = async function (...a) { const r = await o(...a); markDirty(); refreshBlendRow(); infoSize(); return r; };
@@ -1209,7 +1248,7 @@
 		panelToggleMotion();
 		windowMenu();
 		loadLayout();
-		setTimeout(() => { logPanels(); const t = document.querySelector('.array-menu-top'); if (t) { const r = t.getBoundingClientRect(); console.log('[array] window-top ' + JSON.stringify([Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2)])); } }, 600);
+		setTimeout(logPanels, 600);
 		hostEvents();
 		trackChanges();
 		blendRow();

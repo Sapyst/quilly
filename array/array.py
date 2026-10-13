@@ -19,6 +19,7 @@ import base64
 import json
 import mimetypes
 import os
+import secrets
 import shutil
 import subprocess
 import sys
@@ -81,22 +82,18 @@ def gravar_json(nome, obj):
     os.replace(caminho + ".tmp", caminho)
 
 
-def ler_arquivo(caminho):
-    """-> mensagem 'open' pro JS: documento (.array/.json = texto) ou imagem (data URL)."""
+def conferir_arquivo(caminho):
+    """-> (caminho absoluto, kind 'json'|'image', mime). Levanta ValueError se não for coisa do Array."""
     caminho = os.path.abspath(caminho)
     ext = os.path.splitext(caminho)[1].lower()
     if os.path.getsize(caminho) > LIMITE:
         raise ValueError("file is too big (over 200 MB)")
     if ext in DOCUMENTOS:
-        with open(caminho, encoding="utf-8-sig") as f:
-            return {"type": "open", "kind": "json", "path": caminho, "name": os.path.basename(caminho), "data": f.read()}
+        return caminho, "json", "application/json"
     mime = mimetypes.guess_type(caminho)[0] or "image/png"
     if not mime.startswith("image/"):
         raise ValueError("Array opens images and .array documents")
-    with open(caminho, "rb") as f:
-        dados = base64.b64encode(f.read()).decode("ascii")
-    return {"type": "open", "kind": "image", "path": caminho, "name": os.path.basename(caminho),
-            "data": f"data:{mime};base64,{dados}"}
+    return caminho, "image", mime
 
 
 class Janela(archhost.Host):
@@ -105,6 +102,7 @@ class Janela(archhost.Host):
     TITULO = "Array"
     SEM_BORDA = False
     FUNDO = "#141518"
+    MEMORIA_MB = 1024                # o WebKit solta caches a partir de ~512 MB e nunca passa de 1 GB
 
     def __init__(self, app, arquivo=None):
         self.arquivo_inicial = arquivo
@@ -123,12 +121,22 @@ class Janela(archhost.Host):
         self.add_css_class("array")
         self.connect("close-request", self.ao_fechar)
         self.trabalho = None                     # subprocesso de upscale em andamento (pra cancelar)
-        archhost.Host._dinamicos["array"] = self.servir_dinamico   # app://array/upscale/... = resultados no disco
+        self.servidos = {}                       # token -> (caminho, mime): arquivos que a página pode ler (app://array/file/<token>)
+        self.conhecidos = set()                  # caminhos abertos/salvos nesta sessão (só esses ganham token sem diálogo)
+        self.silenciosos = set()                 # caminhos sendo salvos por Ctrl+S (aviso discreto, não toast)
+        archhost.Host._dinamicos["array"] = self.servir_dinamico   # app://array/file/... e upscale/...: lidos do disco, em fluxo
+        self.esperando = {}                      # caminho -> callback quando o download terminar (salvar, camadas do upscale)
 
     # ---------- arquivos vindos de fora (linha de comando, Quilly, gerenciador de arquivos) ----------
     def abrir_arquivo_externo(self, caminho):
+        """A página recebe só um endereço interno; o WebKit lê o arquivo do disco em fluxo (nada em base64)."""
         try:
-            self.enviar(ler_arquivo(caminho))
+            caminho, kind, mime = conferir_arquivo(caminho)
+            token = secrets.token_urlsafe(12)
+            self.servidos[token] = (caminho, mime)
+            self.conhecidos.add(caminho)
+            self.enviar({"type": "open", "kind": kind, "path": caminho, "name": os.path.basename(caminho),
+                         "url": f"app://array/file/{token}"})
             self.lembrar(caminho)
         except Exception as e:  # noqa: BLE001
             self.enviar({"type": "error", "text": f"{os.path.basename(caminho)}: {e}"})
@@ -201,6 +209,13 @@ class Janela(archhost.Host):
             self.escolher_arquivo("Open", FILTROS_ABRIR, escolheu, varios=True, pasta_inicial=self.pasta_inicial())
         elif t == "save-dialog":
             self.dialogo_salvar(msg.get("name"))
+        elif t == "save-token":                  # Ctrl+S no arquivo já conhecido: grava por cima, sem diálogo
+            caminho = msg.get("path") or ""
+            if caminho in self.conhecidos:
+                self.silenciosos.add(caminho)
+                self.enviar({"type": "save-path", "path": caminho, "token": self.token_para(caminho), "silent": True})
+            else:
+                self.dialogo_salvar(os.path.basename(caminho) or msg.get("name"))
         elif t == "save":
             self.salvar(msg)
         elif t == "reveal":
@@ -223,6 +238,17 @@ class Janela(archhost.Host):
             self.enviar({"type": "upscale-engine", "ready": motor()[0] is not None, "size_mb": MOTOR_MB})
         elif t == "upscale-engine-install":
             threading.Thread(target=self.instalar_motor, daemon=True).start()
+        elif t == "upscale-tokens":              # a página vai gravar as camadas (downloads) em CACHE/<job>/<id>-in.png
+            job = str(msg.get("job") or "")
+            if not job.isdigit():
+                return
+            os.makedirs(os.path.join(CACHE, job), exist_ok=True)
+            tokens = {}
+            for ident in msg.get("ids") or []:
+                caminho = os.path.join(CACHE, job, f"{int(ident)}-in.png")
+                tokens[str(ident)] = self.baixar_para(caminho)
+                self.esperando[caminho] = lambda i=ident, j=job: self.enviar({"type": "upscale-in-done", "job": j, "id": i})
+            self.enviar({"type": "upscale-tokens", "job": job, "tokens": tokens})
         elif t == "upscale":
             self.upscale(msg)
         elif t == "upscale-cancel":
@@ -238,14 +264,34 @@ class Janela(archhost.Host):
         GLib.idle_add(lambda: (self.enviar(msg), False)[1])
 
     def servir_dinamico(self, caminho):
-        """O resultado do upscale vai pro JS como app://array/upscale/<job>/<id>.png: o WebKit lê o arquivo
-        direto, sem passar pela ponte em base64."""
+        """app://array/file/<token> (arquivo aberto) e app://array/upscale/<job>/<id>.png (resultado): o WebKit lê
+        do disco em fluxo; a ponte nunca carrega imagem."""
+        if caminho.startswith("file/"):
+            r = self.servidos.get(caminho[len("file/"):])
+            if r and os.path.isfile(r[0]):
+                return r
         if caminho.startswith("upscale/"):
             alvo = os.path.realpath(os.path.join(CACHE, caminho[len("upscale/"):]))
             if alvo.startswith(os.path.realpath(CACHE)) and os.path.isfile(alvo):
-                with open(alvo, "rb") as f:
-                    return f.read(), "image/png"
+                return alvo, "image/png"
         return None
+
+    def ao_gravar(self, caminho, erro):
+        """Um download pedido pela página terminou: salvar (avisa a página) ou camada do upscale (conta)."""
+        cb = self.esperando.pop(caminho, None)
+        if erro:
+            self.enviar({"type": "error", "text": f"could not write {os.path.basename(caminho or '')}: {erro}"})
+            return
+        if cb:
+            cb()
+        elif caminho:
+            self.lembrar(caminho)
+            self.conhecidos.add(caminho)
+            self.enviar({"type": "saved", "path": caminho, "name": os.path.basename(caminho), "silent": caminho in self.silenciosos})
+            self.silenciosos.discard(caminho)
+
+    def token_para(self, caminho):
+        return self.baixar_para(caminho)
 
     def instalar_motor(self):
         """Baixa o release oficial do Real-ESRGAN (ncnn + Vulkan) pro perfil: só o binário e os modelos."""
@@ -300,9 +346,12 @@ class Janela(archhost.Host):
                 for i, item in enumerate(itens, 1):
                     entrada = os.path.join(pasta, f"{item['id']}-in.png")
                     saida = os.path.join(pasta, f"{item['id']}.png")
-                    bruto = item.get("data") or ""
-                    with open(entrada, "wb") as f:
-                        f.write(base64.b64decode(bruto.split(",", 1)[1] if bruto.startswith("data:") else bruto))
+                    if item.get("data"):                       # caminho antigo (base64); o normal é já estar no disco
+                        bruto = item["data"]
+                        with open(entrada, "wb") as f:
+                            f.write(base64.b64decode(bruto.split(",", 1)[1] if bruto.startswith("data:") else bruto))
+                    if not os.path.isfile(entrada):
+                        raise RuntimeError("layer data missing")
                     self.no_main({"type": "upscale-progress", "text": f"{rotulo} · layer {i} of {len(itens)}…"})
                     if metodo == "ai":
                         cmd = [binario, "-i", entrada, "-o", saida, "-n", modelo, "-s", str(escala), "-m", modelos, "-f", "png"]
@@ -360,7 +409,7 @@ class Janela(archhost.Host):
                 return
             if not os.path.splitext(caminho)[1]:
                 caminho += ext
-            self.enviar({"type": "save-path", "path": caminho})
+            self.enviar({"type": "save-path", "path": caminho, "token": self.token_para(caminho)})
         self.salvar_como("Save", nome, filtros, escolheu, pasta_inicial=self.pasta_inicial())
 
 
