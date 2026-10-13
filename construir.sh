@@ -48,7 +48,7 @@ _comum=('python' 'python-gobject' 'gtk4' 'libadwaita' 'webkitgtk-6.0' 'xdg-utils
 _noty=('hunspell' 'enchant')
 _artry=('python-docx' 'python-markdown' 'fontconfig')
 _volury=('python-markdown')
-_array=('libvips')      # vips: o Lanczos do Upscale
+_array=('libvips' 'libraw')      # vips: Lanczos do Upscale e cor do Camera Raw; libraw: dcraw_emu revela o RAW
 
 # instala um app: arquivos, lançador, .desktop, ícones, tipos de arquivo
 _instalar_app() {
@@ -119,7 +119,7 @@ package_arch-quilly() {
     _instalar_app noty Noty "application/x-hyp;text/markdown;text/plain;text/html;" "Editor de texto simples com vidro: .hyp, Markdown e texto" "Office;TextEditor;Utility;"
     _instalar_app artry Artry "application/x-hyp;application/x-artry;text/plain;text/markdown;application/rtf;application/vnd.openxmlformats-officedocument.wordprocessingml.document;" "Editor de documentos ricos e código, com régua coordenada" "Office;WordProcessor;TextEditor;"
     _instalar_app volury Volury "application/epub+zip;application/x-hyp;" "Editor de e-books EPUB" "Office;Publishing;"
-    _instalar_app array Array "application/x-array;image/png;image/jpeg;image/webp;image/gif;image/bmp;image/tiff;" "Image editor with layers and Photoshop-style shortcuts" "Graphics;RasterGraphics;2DGraphics;"
+    _instalar_app array Array "application/x-array;image/png;image/jpeg;image/webp;image/gif;image/bmp;image/tiff;image/x-canon-cr2;image/x-canon-cr3;image/x-nikon-nef;image/x-sony-arw;image/x-adobe-dng;image/x-fuji-raf;image/x-olympus-orf;image/x-panasonic-rw2;image/x-pentax-pef;image/x-samsung-srw;image/x-dcraw;" "Image editor with layers and Photoshop-style shortcuts" "Graphics;RasterGraphics;2DGraphics;"
 }
 package_arch-noty() {
     pkgdesc="Noty (Arch Quilly): editor de texto simples com vidro — .hyp, Markdown e texto"
@@ -138,7 +138,7 @@ package_arch-array() {
     pkgdesc="Array (Arch Quilly): image editor with layers and Photoshop-style shortcuts"
     depends=("\${_comum[@]}" "\${_array[@]}")
     conflicts=(arch-quilly)
-    _instalar_app array Array "application/x-array;image/png;image/jpeg;image/webp;image/gif;image/bmp;image/tiff;" "Image editor with layers and Photoshop-style shortcuts" "Graphics;RasterGraphics;2DGraphics;"
+    _instalar_app array Array "application/x-array;image/png;image/jpeg;image/webp;image/gif;image/bmp;image/tiff;image/x-canon-cr2;image/x-canon-cr3;image/x-nikon-nef;image/x-sony-arw;image/x-adobe-dng;image/x-fuji-raf;image/x-olympus-orf;image/x-panasonic-rw2;image/x-pentax-pef;image/x-samsung-srw;image/x-dcraw;" "Image editor with layers and Photoshop-style shortcuts" "Graphics;RasterGraphics;2DGraphics;"
 }
 package_arch-volury() {
     pkgdesc="Volury (Arch Quilly): editor de e-books EPUB 2/3"

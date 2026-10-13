@@ -19,6 +19,7 @@ import base64
 import json
 import mimetypes
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -37,16 +38,21 @@ VERSAO = "1.0.0"
 PERFIL = archhost.dados("array")
 IMAGENS = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".avif", ".svg", ".tif", ".tiff", ".ico")
 DOCUMENTOS = (".array", ".json")
+# RAW de câmera: o LibRaw (dcraw_emu) revela, o vips aplica a cor; processos externos, nada fica residente
+RAW = (".cr2", ".cr3", ".crw", ".nef", ".nrw", ".arw", ".srf", ".sr2", ".dng", ".raf", ".orf", ".rw2", ".pef",
+       ".srw", ".3fr", ".iiq", ".erf", ".mef", ".mos", ".kdc", ".dcr", ".x3f")
 LIMITE = 200 * 1024 * 1024
 # ---------- upscale: processos externos, nada residente (usou, fez, descarregou) ----------
 CACHE = os.path.join(GLib.get_user_cache_dir(), "arch-quilly", "array", "upscale")     # disco, não /tmp (que é RAM)
+CACHE_RAW = os.path.join(GLib.get_user_cache_dir(), "arch-quilly", "array", "raw")      # previews e a foto revelada
 MOTOR_DIR = os.path.join(PERFIL, "realesrgan")
 MOTOR_URL = "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesrgan-ncnn-vulkan-20220424-ubuntu.zip"
 MOTOR_MB = 45
 MODELOS = {"photo": "realesrgan-x4plus", "art": "realesrgan-x4plus-anime"}
-FILTROS_ABRIR = [("Images and Array documents", ["*.array", "*.json"] + ["*" + e for e in IMAGENS]),
+FILTROS_ABRIR = [("Images, camera RAW and Array documents", ["*.array", "*.json"] + ["*" + e for e in IMAGENS + RAW]),
                  ("Array document", ["*.array"]),
                  ("Images", ["*" + e for e in IMAGENS]),
+                 ("Camera RAW", ["*" + e for e in RAW]),
                  ("All files", ["*"])]
 FILTROS_SALVAR = [("Array document (keeps layers)", ["*.array"]), ("PNG", ["*.png"]), ("JPEG", ["*.jpg", "*.jpeg"]),
                   ("WebP", ["*.webp"]), ("GIF", ["*.gif"]), ("BMP", ["*.bmp"]), ("TIFF", ["*.tif", "*.tiff"]),
@@ -82,6 +88,75 @@ def gravar_json(nome, obj):
     os.replace(caminho + ".tmp", caminho)
 
 
+# ---------- Camera Raw: ajustes -> dcraw_emu | vips ----------
+AMBIENTE_VIPS = {**os.environ, "VIPS_WARNING": "0"}
+REALCES = {"Clip": 0, "Unclip": 1, "Blend": 2, "Rebuild": 5}
+FBDD = {"Off": 0, "Light": 1, "Full": 2}
+DEMOSAIC = {"AHD": 3, "DHT": 11, "AAHD": 12, "DCB": 4, "VNG": 1, "PPG": 2, "Linear": 0}
+
+
+def raw_args(aj, meio):
+    """Ajustes do Camera Raw -> opções do dcraw_emu. meio=True: meio tamanho (o preview e o 'open at half size')."""
+    a = ["-a" if aj.get("wb") == "Auto" else "-w"]            # balanço de branco: automático ou o da câmera
+    if not aj.get("auto_bright", True):
+        a.append("-W")                                         # sem o brilho automático do dcraw
+    ev = float(aj.get("exposure") or 0)
+    if abs(ev) >= 0.01:
+        a += ["-b", f"{2 ** ev:.4f}"]                          # exposição em EV (entra depois do ponto branco)
+    a += ["-H", str(REALCES.get(aj.get("highlights"), 0))]
+    ruido = int(float(aj.get("noise") or 0))
+    if ruido > 0:
+        a += ["-n", str(ruido)]                                # redução de ruído wavelet
+    fbdd = FBDD.get(aj.get("fbdd"), 0)
+    if fbdd:
+        a += ["-fbdd", str(fbdd)]
+    cr, cb = int(float(aj.get("ca_red") or 0)), int(float(aj.get("ca_blue") or 0))
+    if cr or cb:
+        a += ["-C", f"{1 + cr / 10000:.5f}", f"{1 + cb / 10000:.5f}"]    # aberração cromática (escala R e B)
+    if meio:
+        a.append("-h")
+    else:
+        a += ["-q", str(DEMOSAIC.get(aj.get("demosaic"), 3))]
+    return a
+
+
+def raw_ganhos(aj):
+    """Temperatura, tint e contraste viram um 'vips linear' (saída = a*entrada + b por canal) na mesma passada."""
+    f = 2 ** (float(aj.get("temperature") or 0) / 125)          # quente: mais R, menos B
+    g = 2 ** (-float(aj.get("tint") or 0) / 150)                # magenta: menos G
+    c = 2 ** (float(aj.get("contrast") or 0) / 100)             # contraste em torno do cinza médio
+    a = [c * f, c * g, c / f]
+    b = 128 * (1 - c)
+    return " ".join(f"{v:.4f}" for v in a), " ".join([f"{b:.2f}"] * 3)
+
+
+def raw_info(caminho):
+    """Cabeçalho do Camera Raw pelo raw-identify: câmera, ISO, exposição, abertura, focal e tamanho (já rodado)."""
+    info = {}
+    try:
+        saida = subprocess.run(["raw-identify", "-v", caminho], capture_output=True, text=True, timeout=20).stdout
+    except Exception:  # noqa: BLE001
+        return info
+    for linha in saida.splitlines():
+        chave, _, valor = linha.strip().partition(":")
+        valor = valor.strip()
+        if chave == "Camera" and "camera" not in info:
+            info["camera"] = valor.split(" ID:")[0].strip()
+        elif chave == "ISO speed" and valor not in ("", "0"):
+            info["iso"] = valor
+        elif chave == "Shutter":
+            info["shutter"] = re.sub(r"\.0$", "", valor)
+        elif chave == "Aperture" and not valor.endswith("/0.0"):
+            info["aperture"] = valor
+        elif chave == "CurFocal" and "focal" not in info and not valor.startswith("0.0"):
+            info["focal"] = re.sub(r"\.0 mm$", " mm", valor)
+        elif chave in ("Image size", "Output size"):           # Output size vem depois, já com a rotação
+            numeros = re.findall(r"\d+", valor)
+            if len(numeros) >= 2:
+                info["width"], info["height"] = int(numeros[0]), int(numeros[1])
+    return info
+
+
 def conferir_arquivo(caminho):
     """-> (caminho absoluto, kind 'json'|'image', mime). Levanta ValueError se não for coisa do Array."""
     caminho = os.path.abspath(caminho)
@@ -90,6 +165,10 @@ def conferir_arquivo(caminho):
         raise ValueError("file is too big (over 200 MB)")
     if ext in DOCUMENTOS:
         return caminho, "json", "application/json"
+    if ext in RAW:
+        if not shutil.which("dcraw_emu") or not shutil.which("vips"):
+            raise ValueError("camera RAW needs LibRaw (dcraw_emu) and libvips installed")
+        return caminho, "raw", "image/x-dcraw"
     mime = mimetypes.guess_type(caminho)[0] or "image/png"
     if not mime.startswith("image/"):
         raise ValueError("Array opens images and .array documents")
@@ -126,12 +205,21 @@ class Janela(archhost.Host):
         self.silenciosos = set()                 # caminhos sendo salvos por Ctrl+S (aviso discreto, não toast)
         archhost.Host._dinamicos["array"] = self.servir_dinamico   # app://array/file/... e upscale/...: lidos do disco, em fluxo
         self.esperando = {}                      # caminho -> callback quando o download terminar (salvar, camadas do upscale)
+        self.raw_pedidos = {}                    # job -> último pedido de preview (os anteriores caem)
+        self.raw_ocupado = set()                 # jobs com um preview rodando
+        self.raw_cancelados = set()
+        self.raw_lock = threading.Lock()
 
     # ---------- arquivos vindos de fora (linha de comando, Quilly, gerenciador de arquivos) ----------
     def abrir_arquivo_externo(self, caminho):
         """A página recebe só um endereço interno; o WebKit lê o arquivo do disco em fluxo (nada em base64)."""
         try:
             caminho, kind, mime = conferir_arquivo(caminho)
+            if kind == "raw":                  # vai pro Camera Raw da página; o RAW em si nunca é gravado
+                self.enviar({"type": "open", "kind": "raw", "path": caminho, "name": os.path.basename(caminho),
+                             "info": raw_info(caminho)})
+                self.lembrar(caminho)
+                return
             token = secrets.token_urlsafe(12)
             self.servidos[token] = (caminho, mime)
             self.conhecidos.add(caminho)
@@ -249,6 +337,12 @@ class Janela(archhost.Host):
                 tokens[str(ident)] = self.baixar_para(caminho)
                 self.esperando[caminho] = lambda i=ident, j=job: self.enviar({"type": "upscale-in-done", "job": j, "id": i})
             self.enviar({"type": "upscale-tokens", "job": job, "tokens": tokens})
+        elif t == "raw-preview":
+            self.raw_preview(msg)
+        elif t == "raw-open":
+            threading.Thread(target=self.raw_rodar, args=(msg, True), daemon=True).start()
+        elif t in ("raw-cancel", "raw-cleanup"):
+            self.raw_limpar(str(msg.get("job") or ""))
         elif t == "upscale":
             self.upscale(msg)
         elif t == "upscale-cancel":
@@ -264,7 +358,8 @@ class Janela(archhost.Host):
         GLib.idle_add(lambda: (self.enviar(msg), False)[1])
 
     def servir_dinamico(self, caminho):
-        """app://array/file/<token> (arquivo aberto) e app://array/upscale/<job>/<id>.png (resultado): o WebKit lê
+        """app://array/file/<token> (arquivo aberto), app://array/upscale/<job>/<id>.png (resultado) e
+        app://array/raw/<job>/... (previews e a foto revelada do Camera Raw): o WebKit lê
         do disco em fluxo; a ponte nunca carrega imagem."""
         if caminho.startswith("file/"):
             r = self.servidos.get(caminho[len("file/"):])
@@ -274,7 +369,82 @@ class Janela(archhost.Host):
             alvo = os.path.realpath(os.path.join(CACHE, caminho[len("upscale/"):]))
             if alvo.startswith(os.path.realpath(CACHE)) and os.path.isfile(alvo):
                 return alvo, "image/png"
+        if caminho.startswith("raw/"):
+            alvo = os.path.realpath(os.path.join(CACHE_RAW, caminho[len("raw/"):]))
+            if alvo.startswith(os.path.realpath(CACHE_RAW)) and os.path.isfile(alvo):
+                return alvo, "image/png" if alvo.endswith(".png") else "image/jpeg"
         return None
+
+    # ---------- Camera Raw: um processo por pedido (dcraw_emu | vips); só o pedido mais novo de cada job roda ----------
+    def raw_preview(self, msg):
+        job = str(msg.get("job") or "")
+        with self.raw_lock:
+            self.raw_pedidos[job] = msg
+            if job in self.raw_ocupado:
+                return
+            self.raw_ocupado.add(job)
+            self.raw_cancelados.discard(job)
+        threading.Thread(target=self._raw_fila, args=(job,), daemon=True).start()
+
+    def _raw_fila(self, job):
+        while True:
+            with self.raw_lock:
+                msg = self.raw_pedidos.pop(job, None)
+                if msg is None:
+                    self.raw_ocupado.discard(job)
+                    return
+            self.raw_rodar(msg, False)
+
+    def raw_rodar(self, msg, abrir):
+        """Revela o RAW em CACHE_RAW/<job>/: preview em meio tamanho (JPEG) ou a foto final (PNG, 'open as image')."""
+        job, seq = str(msg.get("job") or ""), int(msg.get("seq") or 0)
+        caminho, ajustes = msg.get("path") or "", msg.get("settings") or {}
+        pasta = os.path.join(CACHE_RAW, job)
+        try:
+            if not job or not os.path.isfile(caminho) or os.path.splitext(caminho)[1].lower() not in RAW:
+                raise RuntimeError("not a camera RAW file")
+            os.makedirs(pasta, exist_ok=True)
+            nome = "full.png" if abrir else f"p{seq}.jpg"
+            saida = os.path.join(pasta, nome)
+            if abrir:
+                self.no_main({"type": "raw-progress", "job": job, "text": f"Developing {os.path.basename(caminho)}…"})
+            t0 = time.time()
+            a, b = raw_ganhos(ajustes)
+            p1 = subprocess.Popen(["dcraw_emu", *raw_args(ajustes, meio=not abrir or bool(ajustes.get("half"))),
+                                   "-Z", "-", caminho], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            p2 = subprocess.run(["vips", "linear", "--uchar", "--", "stdin",
+                                 saida + ("[compression=1]" if abrir else "[Q=88]"), a, b],
+                                stdin=p1.stdout, capture_output=True, text=True, env=AMBIENTE_VIPS)
+            p1.stdout.close()
+            erro1 = p1.stderr.read().decode(errors="replace")
+            p1.wait()
+            if p1.returncode or p2.returncode or not os.path.isfile(saida):
+                raise RuntimeError((erro1.strip() or p2.stderr.strip() or "decode failed").splitlines()[-1][:200])
+            if job in self.raw_cancelados:                      # cancelado enquanto rodava: não deixa nada no disco
+                shutil.rmtree(pasta, ignore_errors=True)
+                return
+            ms = int((time.time() - t0) * 1000)
+            if abrir:
+                self.no_main({"type": "raw-done", "job": job, "url": f"app://array/raw/{job}/{nome}", "ms": ms})
+                return
+            for velho in os.listdir(pasta):                     # só os dois últimos previews ficam no disco
+                if velho.startswith("p") and velho.endswith(".jpg") and velho != nome:
+                    try:
+                        if int(velho[1:-4]) < seq - 1:
+                            os.remove(os.path.join(pasta, velho))
+                    except (ValueError, OSError):
+                        pass
+            self.no_main({"type": "raw-preview", "job": job, "seq": seq, "url": f"app://array/raw/{job}/{nome}", "ms": ms})
+        except Exception as e:  # noqa: BLE001
+            self.no_main({"type": "raw-error", "job": job, "seq": seq, "text": str(e)})
+
+    def raw_limpar(self, job):
+        with self.raw_lock:
+            self.raw_pedidos.pop(job, None)
+            self.raw_cancelados.add(job)
+        pasta = os.path.realpath(os.path.join(CACHE_RAW, job))
+        if job and pasta.startswith(os.path.realpath(CACHE_RAW)) and os.path.isdir(pasta):
+            shutil.rmtree(pasta, ignore_errors=True)
 
     def ao_gravar(self, caminho, erro):
         """Um download pedido pela página terminou: salvar (avisa a página) ou camada do upscale (conta)."""

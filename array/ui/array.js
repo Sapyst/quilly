@@ -912,14 +912,33 @@
 			return origClick.call(this);
 		};
 	}
+	// camada de imagem direto de uma URL servida pelo host: o WebKit decodifica do disco, nada de data URL na memória
+	// (o open_handler do miniPaint passa por readAsDataURL, que o WebKit recusa a partir de algumas dezenas de MB)
+	function openImageUrl(url, name) {
+		return new Promise((ok, bad) => {
+			const antes = new Set(cfg.layers.map((l) => l.id));
+			const probe = new Image();                   // confere que decodifica antes de entregar ao miniPaint
+			probe.crossOrigin = 'anonymous';             // mesma chave de cache da Image que o miniPaint cria
+			probe.onerror = () => bad(new Error('the image could not be decoded'));
+			probe.onload = () => {
+				FileOpen.file_open_url_handler({ url });
+				const t0 = Date.now();
+				(function espera() {
+					const nova = cfg.layers.find((l) => !antes.has(l.id));
+					if (nova) { nova.name = name; G.GUI_layers.render_layers(); cfg.need_render = true; ok(nova); return; }
+					if (Date.now() - t0 > 20000) { bad(new Error('the image did not load')); return; }
+					setTimeout(espera, 30);
+				})();
+			};
+			probe.src = url;
+		});
+	}
 	async function openFromHost(m) {
-		const r = await fetch(m.url || m.data);
 		if (m.kind === 'json') {
+			const r = await fetch(m.url || m.data);
 			await FileOpen.load_json(await r.text());
 		} else {
-			const blob = await r.blob();
-			const file = new File([blob], m.name, { type: blob.type || 'image/png' });
-			await FileOpen.open_handler({ target: { files: [file] } });
+			await openImageUrl(m.url, m.name);
 		}
 		doc.path = m.path;
 		doc.name = m.name;
@@ -927,6 +946,121 @@
 		setTitle();
 		setTimeout(() => markDirty(false), 600);     // a camada entra de forma assíncrona e marcaria "alterado"
 		status('Opened ' + m.name);
+	}
+
+	// ---------- Camera Raw: revelação do RAW com preview ao vivo (LibRaw + vips no host, um processo por pedido) ----------
+	// A página só vê JPEGs/PNGs servidos de app://array/raw/<job>/; o arquivo RAW nunca passa pela ponte.
+	let raw = null;                                  // {job, path, name, seq, shown, timer, pop}
+	const escHtml = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+	function rawDialog(m) {
+		if (raw) cancelRaw();
+		raw = { job: String(Date.now()), path: m.path, name: m.name, seq: 0, shown: 0, timer: null, pop: null };
+		const info = m.info || {};
+		const meta = [info.camera, info.iso ? 'ISO ' + info.iso : '', info.shutter ? info.shutter + ' s' : '', info.aperture, info.focal,
+			info.width ? info.width + ' × ' + info.height : ''].filter(Boolean).join('  ·  ');
+		const html = '<div class="array-raw-view" id="array_raw_view" title="Click: 1:1 / fit"><img id="array_raw_img" alt="">'
+			+ '<div class="array-raw-busy">Developing…</div></div>'
+			+ '<div class="array-raw-meta"><span>' + escHtml(meta) + '</span><span id="array_raw_time"></span></div>';
+		mod('help/about').POP.show({
+			title: 'Camera Raw – ' + escHtml(m.name),
+			className: 'array-raw',
+			params: [
+				{ html },
+				{ name: 'wb', title: 'White balance:', type: 'select', values: ['As shot', 'Auto'], value: 'As shot' },
+				{ name: 'temperature', title: 'Temperature:', value: 0, range: [-100, 100], step: 1 },
+				{ name: 'tint', title: 'Tint:', value: 0, range: [-100, 100], step: 1 },
+				{ name: 'auto_bright', title: 'Auto brightness:', value: true },
+				{ name: 'exposure', title: 'Exposure (EV):', value: 0, range: [-3, 3], step: 0.05 },
+				{ name: 'contrast', title: 'Contrast:', value: 0, range: [-100, 100], step: 1 },
+				{ name: 'highlights', title: 'Highlights:', type: 'select', values: ['Clip', 'Unclip', 'Blend', 'Rebuild'], value: 'Clip' },
+				{ name: 'noise', title: 'Noise reduction:', value: 0, range: [0, 1000], step: 25 },
+				{ name: 'ca_red', title: 'Aberration (red):', value: 0, range: [-20, 20], step: 1 },
+				{ name: 'ca_blue', title: 'Aberration (blue):', value: 0, range: [-20, 20], step: 1 },
+				{ name: 'demosaic', title: 'Demosaic:', type: 'select', values: ['AHD', 'DHT', 'AAHD', 'DCB', 'VNG', 'PPG', 'Linear'], value: 'AHD' },
+				{ name: 'fbdd', title: 'FBDD noise filter:', type: 'select', values: ['Off', 'Light', 'Full'], value: 'Off' },
+				{ name: 'half', title: 'Half size on open:', value: false },
+			],
+			on_load: (params, pop) => rawDialogLoaded(pop, params),
+			on_finish: (params) => openRaw(params),
+			on_cancel: () => cancelRaw(),
+		});
+	}
+	// o popup monta uma tabela; o preview sai dela e vira a coluna da esquerda, os ajustes ficam à direita
+	function rawDialogLoaded(pop, params) {
+		raw.pop = pop;
+		const el = pop.el;
+		const table = el.querySelector('[data-id="params_content"] table');
+		const cell = el.querySelector('.html_value');
+		if (table && cell) {
+			const layout = document.createElement('div');
+			layout.className = 'array-raw-layout';
+			const left = document.createElement('div');
+			left.className = 'array-raw-left';
+			while (cell.firstChild) left.appendChild(cell.firstChild);
+			cell.closest('tr').remove();
+			table.parentNode.insertBefore(layout, table);
+			layout.appendChild(left);
+			layout.appendChild(table);
+		}
+		const ok = el.querySelector('[data-id="popup_ok"]');
+		if (ok) ok.textContent = 'Open as image';
+		const schedule = () => { clearTimeout(raw.timer); raw.timer = setTimeout(() => requestRawPreview(pop.get_params()), 120); };
+		el.querySelectorAll('input[id^="pop_data_"], select[id^="pop_data_"]').forEach((i) => {
+			i.addEventListener('input', schedule);
+			i.addEventListener('change', schedule);
+		});
+		const view = el.querySelector('#array_raw_view');
+		if (view) view.addEventListener('click', () => view.classList.toggle('array-raw-zoom'));
+		requestRawPreview(params);
+	}
+	function requestRawPreview(settings) {
+		if (!raw) return;
+		raw.seq++;
+		const view = document.getElementById('array_raw_view');
+		if (view) view.classList.add('busy');
+		send({ type: 'raw-preview', job: raw.job, seq: raw.seq, path: raw.path, settings });
+	}
+	function onRawPreview(m) {
+		if (!raw || m.job !== raw.job || m.seq < raw.shown) return;
+		raw.shown = m.seq;
+		const img = document.getElementById('array_raw_img');
+		const view = document.getElementById('array_raw_view');
+		const time = document.getElementById('array_raw_time');
+		if (!img) return;
+		img.onload = () => { if (raw && m.seq === raw.seq && view) view.classList.remove('busy'); };
+		img.src = m.url;
+		if (time) time.textContent = (m.ms / 1000).toFixed(2) + ' s';
+	}
+	function onRawError(m) {
+		if (!raw || m.job !== raw.job) return;
+		const view = document.getElementById('array_raw_view');
+		if (view) view.classList.remove('busy');
+		toast('Camera Raw: ' + (m.text || 'error'), 'error');
+	}
+	function openRaw(settings) {
+		if (!raw) return;
+		clearTimeout(raw.timer);
+		status('Developing ' + raw.name + '…', 60000);
+		send({ type: 'raw-open', job: raw.job, path: raw.path, settings });
+	}
+	async function rawDone(m) {
+		if (!raw || m.job !== raw.job) return;
+		const base = raw.name.replace(/\.[^.]+$/, '');
+		await openImageUrl(m.url, base + '.png');
+		doc.path = null;                             // a foto revelada é um documento novo: Ctrl+S pergunta onde salvar
+		doc.name = base + '.png';
+		doc.dirty = false;
+		setTitle();
+		setTimeout(() => markDirty(false), 600);
+		status('Opened ' + raw.name + ' (' + (m.ms / 1000).toFixed(1) + ' s)');
+		send({ type: 'raw-cleanup', job: raw.job });
+		raw = null;
+	}
+	function cancelRaw() {
+		if (!raw) return;
+		clearTimeout(raw.timer);
+		send({ type: 'raw-cancel', job: raw.job });
+		raw = null;
 	}
 
 	// ---------- diálogos nossos (usam o popup do miniPaint) ----------
@@ -1129,7 +1263,14 @@
 			const m = ev.data || {};
 			if (String(m.type).startsWith('upscale')) { onUpscaleMessage(m); return; }
 			switch (m.type) {
-				case 'open': openFromHost(m).catch((err) => toast('Could not open: ' + err.message, 'error')); break;
+				case 'open':
+					if (m.kind === 'raw') { rawDialog(m); break; }
+					openFromHost(m).catch((err) => toast('Could not open: ' + err.message, 'error'));
+					break;
+				case 'raw-preview': onRawPreview(m); break;
+				case 'raw-done': rawDone(m).catch((err) => toast('Could not open: ' + err.message, 'error')); break;
+				case 'raw-error': onRawError(m); break;
+				case 'raw-progress': status(m.text || '', 60000); break;
 				case 'save-path': onSavePath(m); break;
 				case 'save-cancel': pending = null; break;
 				case 'saved':

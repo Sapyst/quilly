@@ -42,14 +42,18 @@ APPS = [
     {"Id": "array", "Name": "Array", "Subtitle": "Editor de imagens com camadas",
      "Description": "Edite fotos e imagens com camadas, seleção, pincéis, texto e efeitos, com os atalhos e as "
                     "ferramentas do Photoshop. Salva .array (camadas), PNG, JPEG, WebP, GIF, BMP e TIFF.",
-     "Icon": "assets/array.png", "Formats": [".array", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff"]},
+     "Icon": "assets/array.png", "Formats": [".array", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff",
+                 ".cr2", ".cr3", ".nef", ".arw", ".dng", ".raf", ".orf", ".rw2", ".pef"]},
 ]
 RECOMENDADO = {".hyp": ("Noty / Artry", "noty"), ".artry": ("Artry", "artry"), ".docx": ("Artry", "artry"),
                ".rtf": ("Artry", "artry"), ".md": ("Noty", "noty"), ".txt": ("Noty", "noty"),
                ".html": ("Noty", "noty"), ".epub": ("Volury", "volury"),
                ".array": ("Array", "array"), ".png": ("Array", "array"), ".jpg": ("Array", "array"),
                ".jpeg": ("Array", "array"), ".webp": ("Array", "array"), ".gif": ("Array", "array"),
-               ".bmp": ("Array", "array"), ".tif": ("Array", "array"), ".tiff": ("Array", "array")}
+               ".bmp": ("Array", "array"), ".tif": ("Array", "array"), ".tiff": ("Array", "array"),
+               ".cr2": ("Array", "array"), ".cr3": ("Array", "array"), ".nef": ("Array", "array"),
+               ".arw": ("Array", "array"), ".dng": ("Array", "array"), ".raf": ("Array", "array"),
+               ".orf": ("Array", "array"), ".rw2": ("Array", "array"), ".pef": ("Array", "array")}
 
 
 def comando_do_app(app_id):

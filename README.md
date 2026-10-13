@@ -38,7 +38,7 @@ sudo pacman -U arch-array-1.0.0-1-any.pkg.tar.zst
 
 Packages are on the [Releases](https://github.com/Sapyst/quilly/releases) page. `pacman` pulls the
 dependencies (python-gobject, gtk4, libadwaita, webkitgtk-6.0, and for the writing apps hunspell/enchant,
-python-docx and python-markdown). The suite package and the single-app packages do not mix: the suite
+python-docx and python-markdown; libvips and libraw for Array). The suite package and the single-app packages do not mix: the suite
 already contains the apps. Remove with `sudo pacman -R arch-quilly` (or `arch-array`, …).
 
 The suite registers the file types `.hyp` (Hyper document), `.artry` and `.array` with their icons.
@@ -113,6 +113,17 @@ Both run as a separate process that starts, works and exits: nothing stays loade
 about 1.5 GB of RAM and some VRAM only while it runs, a few seconds per layer on an RTX). Temporary files live in
 `~/.cache/arch-quilly/array/upscale/` (disk, not RAM) and are removed afterwards. To keep the editor light, a layer
 is limited to 8192 px per side and 40 megapixels; the dialog shows the resulting sizes before you confirm.
+
+### Camera Raw
+
+Open a camera RAW file (`.cr2`, `.cr3`, `.nef`, `.arw`, `.dng`, `.raf`, `.orf`, `.rw2`, `.pef`, `.srw` and the other
+formats LibRaw reads) and Array shows **Camera Raw**: a large live preview with white balance (as shot or auto),
+temperature, tint, auto brightness, exposure, contrast, highlight recovery, wavelet noise reduction, chromatic
+aberration, the demosaic algorithm (AHD, DHT, AAHD, DCB, VNG, PPG, linear) and FBDD noise filtering. Click the
+preview for 1:1. **Open as image** develops the file at full size, or at half size to keep a 24 MP photo light, into a
+new document; the RAW file itself is never written to. The preview is a half-size decode, about 0.2 s per change; the
+full development takes a couple of seconds. Both run as separate processes (LibRaw's `dcraw_emu`, then libvips), so
+nothing stays loaded afterwards.
 
 ## Where things are
 
