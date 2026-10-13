@@ -583,7 +583,9 @@
 			flip(() => { target.dock.insertBefore(slot, target.before); }, { skip: drag.panel });
 		}
 		const altura = Math.min(drag.rect.height, 420);
-		requestAnimationFrame(() => { slot.classList.add('on'); slot.style.height = altura + 'px'; });
+		void slot.offsetHeight;                                   // reflow: a altura nova vira transição, não pulo
+		slot.classList.add('on');
+		slot.style.height = altura + 'px';
 	}
 	function startDrag(e) {
 		drag.moved = true; suppressClick = true;
@@ -596,10 +598,11 @@
 		drag.pos = { x: r.left, y: r.top }; drag.alvo = { x: r.left, y: r.top }; drag.vx = 0;
 		drag.loop = requestAnimationFrame(seguir);
 	}
-	// o painel escorre atrás do ponteiro (inércia) e inclina um pouco conforme a velocidade: fluido, não rígido
-	function seguir() {
-		if (!drag || !drag.moved) return;
-		const p = drag.panel, k = motion() ? 0.38 : 1;
+	// o painel escorre atrás do ponteiro (inércia) e inclina um pouco conforme a velocidade: fluido, não rígido.
+	// O passo roda a cada evento do mouse (o WebKit segura o requestAnimationFrame enquanto o botão está
+	// pressionado); o rAF, quando existe, só completa o caminho depois que o mouse para.
+	function passo(k) {
+		const p = drag.panel;
 		let ax = drag.alvo.x, ay = drag.alvo.y;
 		if (drag.target && slot && slot.parentElement) {               // ímã: puxa um pouco pra fenda
 			const sr = slot.getBoundingClientRect();
@@ -611,12 +614,17 @@
 		p.style.left = Math.round(nx) + 'px'; p.style.top = Math.round(ny) + 'px';
 		const tilt = Math.max(-2.2, Math.min(2.2, drag.vx * 0.12));
 		p.style.transform = motion() ? `scale(1.015) rotate(${tilt.toFixed(2)}deg)` : '';
+	}
+	function seguir() {
+		if (!drag || !drag.moved) return;
+		passo(motion() ? 0.38 : 1);
 		drag.loop = requestAnimationFrame(seguir);
 	}
 	function moveDrag(e) {
 		drag.alvo = { x: e.clientX - drag.dx, y: e.clientY - drag.dy };
 		drag.target = findSlot(e.clientX, e.clientY, drag.panel);
 		showSlot(drag.target);
+		passo(motion() ? 0.6 : 1);
 	}
 	function endDrag(e) {
 		const p = drag.panel, t = drag.target;
