@@ -21,6 +21,7 @@ for app in quilly noty artry volury array; do
     rm -f "$destino"/*.bak* "$destino/ui"/*.bak* 2>/dev/null || true
 done
 cp -r "$RAIZ/icones" "$TRAB/arvore/icones"
+chmod -R u=rwX,go=rX "$TRAB/arvore"        # modos do NTFS (ex.: 0600) não podem entrar no pacote
 # ícones em vários tamanhos: gerados aqui (dentro do fakeroot do makepkg o carregador de imagens não roda)
 python3 - "$TRAB/arvore/icones" <<'PY'
 import os, sys, gi
