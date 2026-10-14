@@ -39,16 +39,16 @@ APPS = [
     {"Id": "volury", "Name": "Volury", "Subtitle": "Editor de e-books EPUB",
      "Description": "Monte e-books EPUB 2/3: capítulos, imagens, estilos, sumário e validação. Importa .hyp.",
      "Icon": "assets/volury.png", "Formats": [".epub", ".hyp"]},
-    {"Id": "array", "Name": "Array", "Subtitle": "Editor de imagens com camadas",
-     "Description": "Edite fotos e imagens com camadas, seleção, pincéis, texto e efeitos, com os atalhos e as "
-                    "ferramentas do Photoshop. Salva .array (camadas), PNG, JPEG, WebP, GIF, BMP e TIFF.",
-     "Icon": "assets/array.png", "Formats": [".array", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff",
+    {"Id": "array", "Name": "Array", "Subtitle": "Editor de imagens nativo",
+     "Description": "Fotos e arte com camadas, máscaras, ajustes, estilos, texto, PSD, RAW de câmera e Upscale com IA. "
+                    "Nativo, desenhado pela GPU, baseado no PhotoCraft.",
+     "Icon": "assets/array.png", "Formats": [".pcraft", ".psd", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff",
                  ".cr2", ".cr3", ".nef", ".arw", ".dng", ".raf", ".orf", ".rw2", ".pef"]},
 ]
 RECOMENDADO = {".hyp": ("Noty / Artry", "noty"), ".artry": ("Artry", "artry"), ".docx": ("Artry", "artry"),
                ".rtf": ("Artry", "artry"), ".md": ("Noty", "noty"), ".txt": ("Noty", "noty"),
                ".html": ("Noty", "noty"), ".epub": ("Volury", "volury"),
-               ".array": ("Array", "array"), ".png": ("Array", "array"), ".jpg": ("Array", "array"),
+               ".pcraft": ("Array", "array"), ".psd": ("Array", "array"), ".png": ("Array", "array"), ".jpg": ("Array", "array"),
                ".jpeg": ("Array", "array"), ".webp": ("Array", "array"), ".gif": ("Array", "array"),
                ".bmp": ("Array", "array"), ".tif": ("Array", "array"), ".tiff": ("Array", "array"),
                ".cr2": ("Array", "array"), ".cr3": ("Array", "array"), ".nef": ("Array", "array"),
@@ -115,7 +115,10 @@ def arquivos_recentes():
     caminhos = list(recentes_proprios())
     caminhos += ler_json(os.path.join(DADOS, "noty", "settings.json"), {}).get("ui", {}).get("recent", []) or []
     caminhos += ler_json(os.path.join(DADOS, "artry", "config.json"), {}).get("RecentFiles", []) or []
-    caminhos += ler_json(os.path.join(DADOS, "array", "settings.json"), {}).get("recent", []) or []
+    caminhos += ler_json(os.path.join(DADOS, "array", "settings.json"), {}).get("recent", []) or []      # Array 1
+    config = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")                         # Array 2
+    caminhos += (ler_json(os.path.join(config, "arch-quilly", "array", "preferences.json"), {})
+                 .get("fileHandling", {}).get("recentFiles", []) or [])
     vistos, itens = set(), []
     for p in caminhos:
         if not isinstance(p, str) or p in vistos or not os.path.isfile(p):
