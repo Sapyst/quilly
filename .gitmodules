@@ -1,0 +1,8 @@
+[submodule "fotry"]
+	path = fotry
+	url = https://github.com/Sapyst/fotry.git
+	branch = fotry
+[submodule "takery"]
+	path = takery
+	url = https://github.com/Sapyst/takery.git
+	branch = takery

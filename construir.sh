@@ -13,8 +13,12 @@ TRAB="${XDG_CACHE_HOME:-$HOME/.cache}/arch-quilly-build"
 #   Fotry  = fork do PhotoCraft (FOTRY_SRC,  ~/.local/src/fotry),  binário photocraft
 #   Takery = fork do FilmCraft  (TAKERY_SRC, ~/.local/src/takery), binário filmcraft (com Whisper)
 # O binário é compilado aqui se faltar ou se o código for mais novo que ele.
+# As pastas fotry/ e takery/ deste repositório são submódulos com o mesmo código
+# (git submodule update --init); compilar fora do NTFS é mais rápido, por isso o padrão é ~/.local/src.
 FOTRY_SRC="${FOTRY_SRC:-$HOME/.local/src/fotry}"
 TAKERY_SRC="${TAKERY_SRC:-$HOME/.local/src/takery}"
+[ -d "$FOTRY_SRC/crates" ] || FOTRY_SRC="$RAIZ/fotry"
+[ -d "$TAKERY_SRC/crates" ] || TAKERY_SRC="$RAIZ/takery"
 compilar() {   # compilar <pasta> <binário> <nome> [argumentos do cargo…]
     local src=$1 bin=$2 nome=$3; shift 3
     if [ ! -x "$src/target/release/$bin" ] || [ -n "$(find "$src/crates" "$src/apps" -name '*.rs' -newer "$src/target/release/$bin" -print -quit)" ]; then
@@ -216,5 +220,7 @@ for p in "$TRAB"/*.pkg.tar.zst; do
     case "$p" in *-debug-*) continue ;; esac
     cp "$p" "$RAIZ/dist/"
 done
+# a lista de SHA-256 que o Quilly confere antes de instalar (vai na release junto com os pacotes)
+(cd "$RAIZ/dist" && sha256sum *-"$VERSAO"-1-*.pkg.tar.zst > "SHA256SUMS-$VERSAO" && cp "SHA256SUMS-$VERSAO" SHA256SUMS)
 echo "Pacotes em $RAIZ/dist:"
 ls -1 "$RAIZ/dist"

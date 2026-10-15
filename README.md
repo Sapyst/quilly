@@ -38,7 +38,13 @@ Or a single app, without the hub (each one is independent):
 sudo pacman -U arch-takery-1.2.0-1-x86_64.pkg.tar.zst
 ```
 
-Packages are on the [Releases](https://github.com/Sapyst/quilly/releases) page. `pacman` pulls the
+Packages are on the [Releases](https://github.com/Sapyst/quilly/releases) page.
+
+**Updates from the Quilly hub.** Quilly reads the latest release of this repository (GitHub's public API, no
+account), shows "Atualizar vX.Y" on the cards when there is a newer version, downloads the package, checks it
+against the release's `SHA256SUMS` and opens a terminal with `sudo pacman -U` (the administrator password is only
+ever typed in the terminal). With the suite installed it updates everything at once; with single-app packages it
+updates each installed one; "Instalar" installs a missing app. Publishing a release here updates everyone's suite. `pacman` pulls the
 dependencies (python-gobject, gtk4, libadwaita, webkitgtk-6.0, and for the writing apps hunspell/enchant,
 python-docx and python-markdown; Vulkan and GTK3 for Fotry and Takery, whisper-cpp and ggml-vulkan for Takery's captions). The suite package and the single-app packages do not mix: the suite
 already contains the apps. Remove with `sudo pacman -R arch-quilly` (or `arch-fotry`, …).
@@ -119,6 +125,7 @@ builds it with `cargo build --release -p filmcraft --features whisper`.
 - `windows/`: the original C# (.NET + WinForms + WebView2) sources of Quilly, Noty, Artry and Volury, as they were
   on Windows, without build output. `build.ps1` in each folder rebuilds them.
 - `icones/`: the app icons; `icones/gerar.py` regenerates them all in the same design.
+- `fotry/`, `takery/`: the two native apps' code, as git submodules of their forks ([Sapyst/fotry](https://github.com/Sapyst/fotry), [Sapyst/takery](https://github.com/Sapyst/takery)): `git clone --recursive`, or `git submodule update --init`.
 
 ## Build the packages again
 
@@ -126,8 +133,11 @@ builds it with `cargo build --release -p filmcraft --features whisper`.
 ./construir.sh
 ```
 
-Writes `dist/arch-quilly-*.pkg.tar.zst` and one package per app. Needs `base-devel` (makepkg) and
-python-gobject with GdkPixbuf for the icon sizes.
+Writes `dist/arch-quilly-*.pkg.tar.zst`, one package per app and `SHA256SUMS`. Needs `base-devel` (makepkg),
+python-gobject with GdkPixbuf for the icon sizes, and Rust (`rust`) for Fotry and Takery, built from
+`FOTRY_SRC` / `TAKERY_SRC` (default `~/.local/src/…`, else the submodules). To publish a version: bump
+`quilly/VERSAO`, run `./construir.sh`, then create the release `vX.Y.Z` with every `dist/*-X.Y.Z-*` package and
+`dist/SHA256SUMS` (`gh release create vX.Y.Z dist/*-X.Y.Z-1-*.pkg.tar.zst dist/SHA256SUMS`).
 
 ## Credits and licenses
 

@@ -29,6 +29,10 @@
       }
     } else if (msg.type === 'install_progress') {
       onInstallProgress(msg.appId, msg.percent, msg.status);
+    } else if (msg.type === 'apps_refresh') {
+      loadApps();
+    } else if (msg.type === 'install_error') {
+      alert('Não foi possível instalar: ' + msg.error);
     }
   });
 
@@ -281,8 +285,8 @@
     }
 
     rpc('apps.install', { appId: appId }).then(function (res) {
-      if (res && res.apps) state.apps = res.apps;
-      renderApps();
+      // o progresso chega por install_progress; ao terminar o Quilly manda apps_refresh
+      if (res && res.apps) { state.apps = res.apps; renderApps(); }
     }).catch(function (err) {
       alert('Falha na instalação: ' + err.message);
       if (pBox) pBox.classList.remove('active');

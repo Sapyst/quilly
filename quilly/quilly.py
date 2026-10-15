@@ -4,8 +4,9 @@ Quilly (Arch Quilly) — a central da suíte: abre o Noty, o Artry, o Volury, o 
 documentos recentes de todos eles na aba Arquivos.
 
 Port do Quilly de Windows (C# + WebView2). A interface (ui/) é a original, com os textos de Windows
-adaptados. No Windows ele instalava/atualizava os apps copiando .exe; aqui quem instala e atualiza é o
-pacman (pacote arch-quilly), então os cartões mostram "Abrir" e a versão instalada.
+adaptados. Instalar e atualizar: o Quilly lê a release mais recente do GitHub (Sapyst/quilly), mostra
+"Atualizar vX.Y" quando há versão nova, baixa o pacote, confere o SHA-256 e abre um terminal com
+`sudo pacman -U` (atualizador.py). Publicou release = todo Quilly vê a atualização.
 
 Ponte: {type:'rpc', id, method, args} -> {type:'rpc-reply', id, ok, data, error} (igual ao original;
 AppInfo/FileItem em PascalCase porque a interface depende disso).
@@ -16,11 +17,13 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, AQUI)
 import archhost  # noqa: E402
+import atualizador  # noqa: E402
 from gi.repository import GLib  # noqa: E402
 
 PERFIL = archhost.dados("quilly")
@@ -78,12 +81,21 @@ def versao_do_app(app_id):
         return "1.0.0"
 
 
-def info_app(a):
+def info_app(a, tem=None):
+    """O cartão de um app: instalado?, versão instalada e a do GitHub (atualizador.em_cache)."""
+    tem = atualizador.instalados() if tem is None else tem
     cmd = comando_do_app(a["Id"])
-    v = versao_do_app(a["Id"])
-    return dict(a, Installed=bool(cmd), UpdateAvailable=False, InstalledPath=" ".join(cmd or []),
-                SourcePath="", InstalledSize=0, SourceSize=0, InstalledDate=None, SourceDate=None,
-                InstalledVersion=v, SourceVersion=v)
+    v = tem.get("arch-quilly") or tem.get(f"arch-{a['Id']}") or versao_do_app(a["Id"])
+    remoto = atualizador.em_cache()
+    rv = remoto["versao"] if remoto else v
+    return dict(a, Installed=bool(cmd), UpdateAvailable=bool(cmd and remoto and atualizador.mais_nova(rv, v)),
+                InstalledPath=" ".join(cmd or []), SourcePath="", InstalledSize=0, SourceSize=0,
+                InstalledDate=None, SourceDate=None, InstalledVersion=v, SourceVersion=rv)
+
+
+def lista_apps():
+    tem = atualizador.instalados()
+    return [info_app(x, tem) for x in APPS]
 
 
 def ler_json(caminho, padrao):
@@ -213,6 +225,46 @@ class Janela(archhost.Host):
     def __init__(self, app):
         super().__init__(app)
         self.set_size_request(960, 620)
+        self.instalando = False
+        self.consultar_github(forcar=True)
+
+    def consultar_github(self, forcar=False):
+        """Lê a release mais recente em segundo plano e avisa a interface (os cartões se refazem)."""
+        def trabalho():
+            antes = atualizador.em_cache()
+            depois = atualizador.consultar(forcar)
+            if depois and depois != antes:
+                GLib.idle_add(self.enviar, {"type": "apps_refresh"})
+        threading.Thread(target=trabalho, daemon=True).start()
+
+    def instalar(self, app_id):
+        """Baixa (com progresso no cartão), confere e abre o terminal do pacman; ao fechar, refaz a lista."""
+        def progresso(pct, texto):
+            GLib.idle_add(self.enviar, {"type": "install_progress", "appId": app_id, "percent": pct, "status": texto})
+
+        def trabalho():
+            try:
+                progresso(0, "Consultando o GitHub…")
+                remoto, nomes = atualizador.plano(app_id)
+                arquivos = []
+                for i, nome in enumerate(nomes):
+                    def p(lido, total, i=i):
+                        fr = (i + (lido / total if total else 0)) / len(nomes)
+                        progresso(int(fr * 95), f"Baixando {remoto['versao']}… {lido // 1_000_000} de {total // 1_000_000} MB")
+                    arquivos.append(atualizador.baixar(remoto, nome, p))
+                progresso(97, "Confirme a instalação no terminal")
+                proc = atualizador.instalar_no_terminal(arquivos)
+                proc.wait()
+                progresso(100, "Concluído")
+            except Exception as e:  # noqa: BLE001
+                GLib.idle_add(self.enviar, {"type": "install_error", "appId": app_id, "error": str(e)})
+            finally:
+                self.instalando = False
+                GLib.idle_add(self.enviar, {"type": "apps_refresh"})
+        if self.instalando:
+            raise RuntimeError("Já tem uma instalação em andamento.")
+        self.instalando = True
+        threading.Thread(target=trabalho, daemon=True).start()
 
     def abrir_arquivo_externo(self, caminho):
         """Arquivo passado pro Quilly: abre no app recomendado (como no original)."""
@@ -233,13 +285,17 @@ class Janela(archhost.Host):
 
     def rpc(self, m, a):
         if m == "apps.list":
-            return [info_app(x) for x in APPS]
+            self.consultar_github()                      # usa o cache; a cada 15 min consulta de novo
+            return lista_apps()
+        if m == "apps.checkUpdates":
+            self.consultar_github(forcar=True)
+            return {"success": True}
         if m == "apps.install":
             app = next((x for x in APPS if x["Id"] == a.get("appId")), None)
-            if app and comando_do_app(app["Id"]):
-                return {"success": True, "apps": [info_app(x) for x in APPS]}
-            raise RuntimeError(f"Instale pelo terminal: sudo pacman -U arch-{a.get('appId')}-*.pkg.tar.zst "
-                               "(ou o pacote completo arch-quilly).")
+            if not app:
+                raise RuntimeError("App desconhecido.")
+            self.instalar(app["Id"])                     # instalar ou atualizar: o progresso vem por install_progress
+            return {"success": True, "started": True}
         if m == "apps.uninstall":
             raise RuntimeError("Os apps da suíte são removidos pelo pacman (sudo pacman -R arch-quilly).")
         if m == "apps.launch":
