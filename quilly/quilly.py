@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Quilly (Arch Quilly) — a central da suíte: abre o Noty, o Artry, o Volury e o Array e junta os
+Quilly (Arch Quilly) — a central da suíte: abre o Noty, o Artry, o Volury, o Fotry e o Takery e junta os
 documentos recentes de todos eles na aba Arquivos.
 
 Port do Quilly de Windows (C# + WebView2). A interface (ui/) é a original, com os textos de Windows
@@ -39,21 +39,27 @@ APPS = [
     {"Id": "volury", "Name": "Volury", "Subtitle": "Editor de e-books EPUB",
      "Description": "Monte e-books EPUB 2/3: capítulos, imagens, estilos, sumário e validação. Importa .hyp.",
      "Icon": "assets/volury.png", "Formats": [".epub", ".hyp"]},
-    {"Id": "array", "Name": "Array", "Subtitle": "Editor de imagens nativo",
+    {"Id": "fotry", "Name": "Fotry", "Subtitle": "Editor de imagens nativo",
      "Description": "Fotos e arte com camadas, máscaras, ajustes, estilos, texto, PSD, RAW de câmera e Upscale com IA. "
                     "Nativo, desenhado pela GPU, baseado no PhotoCraft.",
-     "Icon": "assets/array.png", "Formats": [".pcraft", ".psd", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff",
+     "Icon": "assets/fotry.png", "Formats": [".pcraft", ".psd", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff",
                  ".cr2", ".cr3", ".nef", ".arw", ".dng", ".raf", ".orf", ".rw2", ".pef"]},
+    {"Id": "takery", "Name": "Takery", "Subtitle": "Editor de vídeo com legenda automática",
+     "Description": "Edição de vídeo em linha do tempo, cor, áudio, títulos e legendas automáticas pela GPU "
+                    "(Whisper). Nativo, com aceleração por hardware, baseado no FilmCraft.",
+     "Icon": "assets/takery.png", "Formats": [".fcproj", ".mp4", ".mov", ".mkv", ".webm", ".mxf", ".srt", ".vtt"]},
 ]
 RECOMENDADO = {".hyp": ("Noty / Artry", "noty"), ".artry": ("Artry", "artry"), ".docx": ("Artry", "artry"),
                ".rtf": ("Artry", "artry"), ".md": ("Noty", "noty"), ".txt": ("Noty", "noty"),
                ".html": ("Noty", "noty"), ".epub": ("Volury", "volury"),
-               ".pcraft": ("Array", "array"), ".psd": ("Array", "array"), ".png": ("Array", "array"), ".jpg": ("Array", "array"),
-               ".jpeg": ("Array", "array"), ".webp": ("Array", "array"), ".gif": ("Array", "array"),
-               ".bmp": ("Array", "array"), ".tif": ("Array", "array"), ".tiff": ("Array", "array"),
-               ".cr2": ("Array", "array"), ".cr3": ("Array", "array"), ".nef": ("Array", "array"),
-               ".arw": ("Array", "array"), ".dng": ("Array", "array"), ".raf": ("Array", "array"),
-               ".orf": ("Array", "array"), ".rw2": ("Array", "array"), ".pef": ("Array", "array")}
+               ".pcraft": ("Fotry", "fotry"), ".psd": ("Fotry", "fotry"), ".png": ("Fotry", "fotry"), ".jpg": ("Fotry", "fotry"),
+               ".jpeg": ("Fotry", "fotry"), ".webp": ("Fotry", "fotry"), ".gif": ("Fotry", "fotry"),
+               ".bmp": ("Fotry", "fotry"), ".tif": ("Fotry", "fotry"), ".tiff": ("Fotry", "fotry"),
+               ".cr2": ("Fotry", "fotry"), ".cr3": ("Fotry", "fotry"), ".nef": ("Fotry", "fotry"),
+               ".arw": ("Fotry", "fotry"), ".dng": ("Fotry", "fotry"), ".raf": ("Fotry", "fotry"),
+               ".orf": ("Fotry", "fotry"), ".rw2": ("Fotry", "fotry"), ".pef": ("Fotry", "fotry"),
+               ".fcproj": ("Takery", "takery"), ".mp4": ("Takery", "takery"), ".mov": ("Takery", "takery"),
+               ".mkv": ("Takery", "takery"), ".webm": ("Takery", "takery"), ".mxf": ("Takery", "takery")}
 
 
 def comando_do_app(app_id):
@@ -110,15 +116,29 @@ def tamanho(b):
         b /= 1024
 
 
+def chave_recursiva(obj, chave):
+    """A primeira lista de nome `chave` em qualquer nível de um JSON (as preferências do Takery)."""
+    if isinstance(obj, dict):
+        if isinstance(obj.get(chave), list):
+            return obj[chave]
+        for v in obj.values():
+            r = chave_recursiva(v, chave)
+            if r:
+                return r
+    return []
+
+
 def arquivos_recentes():
-    """Quilly + Noty (ui.recent) + Artry (RecentFiles) + Array (recent): os que existem, mais recentes primeiro, até 30."""
+    """Quilly + Noty (ui.recent) + Artry (RecentFiles) + Fotry + Takery: os que existem, mais recentes primeiro, até 30."""
     caminhos = list(recentes_proprios())
     caminhos += ler_json(os.path.join(DADOS, "noty", "settings.json"), {}).get("ui", {}).get("recent", []) or []
     caminhos += ler_json(os.path.join(DADOS, "artry", "config.json"), {}).get("RecentFiles", []) or []
     caminhos += ler_json(os.path.join(DADOS, "array", "settings.json"), {}).get("recent", []) or []      # Array 1
-    config = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")                         # Array 2
-    caminhos += (ler_json(os.path.join(config, "arch-quilly", "array", "preferences.json"), {})
-                 .get("fileHandling", {}).get("recentFiles", []) or [])
+    config = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")                         # Fotry
+    for pasta in ("fotry", "array"):
+        caminhos += (ler_json(os.path.join(config, "arch-quilly", pasta, "preferences.json"), {})
+                     .get("fileHandling", {}).get("recentFiles", []) or [])
+    caminhos += chave_recursiva(ler_json(os.path.join(DADOS, "takery", "preferences.json"), {}), "recentProjects")  # Takery
     vistos, itens = set(), []
     for p in caminhos:
         if not isinstance(p, str) or p in vistos or not os.path.isfile(p):
@@ -148,7 +168,7 @@ def abrir_com(caminho, app_id):
     if not os.path.isfile(caminho):
         raise FileNotFoundError(f"Arquivo não encontrado: {caminho}")
     adicionar_recente(caminho)
-    if app_id in ("noty", "artry", "volury", "array"):
+    if app_id in ("noty", "artry", "volury", "fotry", "takery"):
         lancar(app_id, caminho)
         return
     ext = os.path.splitext(caminho)[1].lower()

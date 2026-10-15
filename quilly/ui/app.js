@@ -334,7 +334,7 @@
       if (file.Extension === '.hyp') extClass = 'ext-hyp';
       else if (file.Extension === '.md') extClass = 'ext-md';
       else if (file.Extension === '.artry') extClass = 'ext-artry';
-      else if (['.array', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'].includes(file.Extension)) extClass = 'ext-array';
+      else if (['.pcraft', '.psd', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'].includes(file.Extension)) extClass = 'ext-array';
       else if (file.Extension === '.docx') extClass = 'ext-docx';
 
       var extBadgeHtml = file.Extension === '.hyp'
@@ -398,8 +398,12 @@
       if (state.selectedFile) abrirArquivo(state.selectedFile.Path, 'volury');
       fecharMenuContexto();
     });
-    document.getElementById('ctx-open-array').addEventListener('click', function () {
-      if (state.selectedFile) abrirArquivo(state.selectedFile.Path, 'array');
+    document.getElementById('ctx-open-takery').addEventListener('click', function () {
+      if (state.selectedFile) abrirArquivo(state.selectedFile.Path, 'takery');
+      fecharMenuContexto();
+    });
+    document.getElementById('ctx-open-fotry').addEventListener('click', function () {
+      if (state.selectedFile) abrirArquivo(state.selectedFile.Path, 'fotry');
       fecharMenuContexto();
     });
 
