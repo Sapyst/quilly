@@ -1,29 +1,35 @@
 #!/usr/bin/env bash
 # construir.sh — gera os pacotes do Arch da Arch Quilly em ./dist:
-#   arch-quilly-<versão>-x86_64.pkg.tar.zst   a suíte inteira (Quilly + Noty + Artry + Volury + Fotry + Takery) num arquivo só
-#   arch-noty-…, arch-artry-…, arch-volury-…, arch-fotry-…, arch-takery-…   cada app sozinho, sem o Quilly
+#   arch-quilly-<versão>-any.pkg.tar.zst   a base: o Quilly (a central) com o Noty
+#   arch-artry-…, arch-volury-…, arch-fotry-…, arch-takery-…   os outros apps, cada um no seu pacote;
+#       o Quilly baixa da release do GitHub o que o usuário pedir pra instalar (atualizador.py)
+#   arch-noty-…   o Noty sozinho, pra quem não quer o Quilly (não se mistura com a base, que já tem o Noty)
 # Instalar:   sudo pacman -U dist/arch-quilly-*.pkg.tar.zst      (o pacman puxa as dependências)
-# Remover:    sudo pacman -R arch-quilly
-# Os avulsos e a suíte não se misturam: a suíte já contém os apps (ela "provides" e "conflicts" com eles).
+# Remover:    sudo pacman -R arch-quilly arch-artry …
 set -euo pipefail
 RAIZ="$(cd "$(dirname "$0")" && pwd)"
-VERSAO="$(cat "$RAIZ/quilly/VERSAO")"
+VERSAO="$(cat "$RAIZ/apps/quilly/VERSAO")"
 TRAB="${XDG_CACHE_HOME:-$HOME/.cache}/arch-quilly-build"
-# Fotry e Takery são nativos (Rust): o código de cada um mora num fork, fora deste repositório.
-#   Fotry  = fork do PhotoCraft (FOTRY_SRC,  ~/.local/src/fotry),  binário photocraft
-#   Takery = fork do FilmCraft  (TAKERY_SRC, ~/.local/src/takery), binário filmcraft (com Whisper)
-# O binário é compilado aqui se faltar ou se o código for mais novo que ele.
-# As pastas fotry/ e takery/ deste repositório são submódulos com o mesmo código
-# (git submodule update --init); compilar fora do NTFS é mais rápido, por isso o padrão é ~/.local/src.
-FOTRY_SRC="${FOTRY_SRC:-$HOME/.local/src/fotry}"
-TAKERY_SRC="${TAKERY_SRC:-$HOME/.local/src/takery}"
-[ -d "$FOTRY_SRC/crates" ] || FOTRY_SRC="$RAIZ/fotry"
-[ -d "$TAKERY_SRC/crates" ] || TAKERY_SRC="$RAIZ/takery"
+# Fotry e Takery são nativos (Rust): o código de cada um é um fork no GitHub, que mora aqui como submódulo.
+#   Fotry  = fork do PhotoCraft (apps/fotry),  binário photocraft
+#   Takery = fork do FilmCraft  (apps/takery), binário filmcraft (com Whisper)
+#   as fontes que eles embutem: vendor/craft-fonts
+# Clonou sem os submódulos? git submodule update --init
+# O binário é compilado aqui se faltar ou se o código for mais novo que ele. A saída do cargo fica em
+# ~/.cache/arch-quilly-cargo/<app>, fora do NTFS (compila bem mais rápido lá).
+FOTRY_SRC="${FOTRY_SRC:-$RAIZ/apps/fotry}"
+TAKERY_SRC="${TAKERY_SRC:-$RAIZ/apps/takery}"
+CRAFT_FONTS_DIR="${CRAFT_FONTS_DIR:-$RAIZ/vendor/craft-fonts}"
+CARGO_ALVO="${XDG_CACHE_HOME:-$HOME/.cache}/arch-quilly-cargo"
+for d in "$FOTRY_SRC" "$TAKERY_SRC" "$CRAFT_FONTS_DIR"; do
+    [ -n "$(ls -A "$d" 2>/dev/null)" ] || { echo "Falta o código em $d: rode git submodule update --init" >&2; exit 1; }
+done
 compilar() {   # compilar <pasta> <binário> <nome> [argumentos do cargo…]
     local src=$1 bin=$2 nome=$3; shift 3
-    if [ ! -x "$src/target/release/$bin" ] || [ -n "$(find "$src/crates" "$src/apps" -name '*.rs' -newer "$src/target/release/$bin" -print -quit)" ]; then
+    local alvo="$CARGO_ALVO/$(basename "$src")"
+    if [ ! -x "$alvo/release/$bin" ] || [ -n "$(find "$src/crates" "$src/apps" -name '*.rs' -newer "$alvo/release/$bin" -print -quit)" ]; then
         echo "Compilando o $nome (cargo build --release)…"
-        (cd "$src" && CRAFT_FONTS_DIR="${CRAFT_FONTS_DIR:-$(dirname "$src")/craft-fonts}" cargo build --release "$@")
+        (cd "$src" && CRAFT_FONTS_DIR="$CRAFT_FONTS_DIR" CARGO_TARGET_DIR="$alvo" cargo build --release "$@")
     fi
 }
 compilar "$FOTRY_SRC" photocraft Fotry -p photocraft
@@ -34,7 +40,7 @@ rm -rf "$TRAB" && mkdir -p "$TRAB/arvore" "$RAIZ/dist"
 for app in quilly noty artry volury; do
     destino="$TRAB/arvore/$app"
     mkdir -p "$destino"
-    cp -r "$RAIZ/$app/." "$destino/"
+    cp -r "$RAIZ/apps/$app/." "$destino/"
     cp "$RAIZ/comum/archhost.py" "$RAIZ/comum/icones.py" "$destino/"      # cada app leva a sua casca
     find "$destino" -name "__pycache__" -prune -exec rm -rf {} +
     rm -f "$destino"/*.bak* "$destino/ui"/*.bak* 2>/dev/null || true
@@ -43,7 +49,7 @@ done
 nativo() {   # nativo <app> <pasta> <binário> <origem> <url da origem>
     local app=$1 src=$2 bin=$3 origem=$4 url=$5
     mkdir -p "$TRAB/arvore/$app/licencas/$origem"
-    cp "$src/target/release/$bin" "$TRAB/arvore/$app/$app"
+    cp "$CARGO_ALVO/$(basename "$src")/release/$bin" "$TRAB/arvore/$app/$app"
     for f in LICENSE-MIT LICENSE-APACHE NOTICE ATTRIBUTION.md; do [ -f "$src/$f" ] && cp "$src/$f" "$TRAB/arvore/$app/licencas/$origem/"; done
     echo "$VERSAO" > "$TRAB/arvore/$app/VERSAO"
     (cd "$src" && git log -1 --format="$app: fork of $url at %H" > "$TRAB/arvore/$app/licencas/$origem/SOURCE.txt")
@@ -160,19 +166,15 @@ MIME
 }
 
 package_arch-quilly() {
-    arch=('x86_64')      # leva o Fotry e o Takery, nativos
-    pkgdesc="Arch Quilly: writing, image and video suite (Quilly, Noty, Artry, Volury, Fotry and Takery) in one package"
-    depends=("\${_comum[@]}" "\${_noty[@]}" "\${_artry[@]}" "\${_volury[@]}" "\${_fotry[@]}" "\${_takery[@]}")
+    arch=('any')
+    pkgdesc="Arch Quilly: the suite hub (Quilly) with Noty; installs Artry, Volury, Fotry and Takery from GitHub"
+    depends=("\${_comum[@]}" "\${_noty[@]}")
     optdepends=('hunspell-en_us: corretor em inglês no Noty' 'hunspell-es_any: corretor em espanhol no Noty'
                 'hunspell-fr-comprehensive: corretor em francês no Noty')
-    provides=(arch-noty arch-artry arch-volury arch-fotry arch-takery)
-    conflicts=(arch-noty arch-artry arch-volury arch-fotry arch-takery arch-array)
+    provides=(arch-noty)
+    conflicts=(arch-noty arch-array)
     _instalar_app quilly Quilly "" "Central da suíte de escrita: apps e documentos recentes" "Office;Utility;"
     _instalar_app noty Noty "application/x-hyp;text/markdown;text/plain;text/html;" "Editor de texto simples com vidro: .hyp, Markdown e texto" "Office;TextEditor;Utility;"
-    _instalar_app artry Artry "application/x-hyp;application/x-artry;text/plain;text/markdown;application/rtf;application/vnd.openxmlformats-officedocument.wordprocessingml.document;" "Editor de documentos ricos e código, com régua coordenada" "Office;WordProcessor;TextEditor;"
-    _instalar_app volury Volury "application/epub+zip;application/x-hyp;" "Editor de e-books EPUB" "Office;Publishing;"
-    _instalar_app fotry Fotry "application/x-photocraft;image/vnd.adobe.photoshop;image/x-psd;image/png;image/jpeg;image/webp;image/gif;image/bmp;image/tiff;image/avif;image/x-tga;image/x-exr;image/openraster;application/x-krita;image/x-canon-cr2;image/x-canon-cr3;image/x-nikon-nef;image/x-sony-arw;image/x-adobe-dng;image/x-fuji-raf;image/x-olympus-orf;image/x-panasonic-rw2;image/x-pentax-pef;image/x-samsung-srw;image/x-dcraw;" "Image editor: layers, masks, PSD, camera RAW and AI upscale" "Graphics;RasterGraphics;2DGraphics;"
-    _instalar_app takery Takery "application/x-filmcraft;video/mp4;video/x-m4v;video/quicktime;video/x-matroska;video/webm;video/vnd.avi;video/x-msvideo;application/mxf;video/mp2t;video/mpeg;video/3gpp;" "Video editor: timeline, color, audio and GPU auto captions" "AudioVideo;Video;AudioVideoEditing;"
 }
 package_arch-noty() {
     arch=('any')
@@ -186,14 +188,13 @@ package_arch-artry() {
     arch=('any')
     pkgdesc="Artry (Arch Quilly): editor de documentos ricos e código, com régua coordenada"
     depends=("\${_comum[@]}" "\${_artry[@]}")
-    conflicts=(arch-quilly)
     _instalar_app artry Artry "application/x-hyp;application/x-artry;text/plain;text/markdown;application/rtf;application/vnd.openxmlformats-officedocument.wordprocessingml.document;" "Editor de documentos ricos e código, com régua coordenada" "Office;WordProcessor;TextEditor;"
 }
 package_arch-fotry() {
     arch=('x86_64')
     pkgdesc="Fotry (Arch Quilly): image editor with layers, masks, PSD, camera RAW and AI upscale"
     depends=("\${_comum[@]}" "\${_fotry[@]}")
-    conflicts=(arch-quilly arch-array)
+    conflicts=(arch-array)
     replaces=(arch-array)
     _instalar_app fotry Fotry "application/x-photocraft;image/vnd.adobe.photoshop;image/x-psd;image/png;image/jpeg;image/webp;image/gif;image/bmp;image/tiff;image/avif;image/x-tga;image/x-exr;image/openraster;application/x-krita;image/x-canon-cr2;image/x-canon-cr3;image/x-nikon-nef;image/x-sony-arw;image/x-adobe-dng;image/x-fuji-raf;image/x-olympus-orf;image/x-panasonic-rw2;image/x-pentax-pef;image/x-samsung-srw;image/x-dcraw;" "Image editor: layers, masks, PSD, camera RAW and AI upscale" "Graphics;RasterGraphics;2DGraphics;"
 }
@@ -202,14 +203,12 @@ package_arch-takery() {
     pkgdesc="Takery (Arch Quilly): video editor with GPU auto captions and hardware acceleration"
     depends=("\${_comum[@]}" "\${_takery[@]}")
     optdepends=('nvidia-utils: NVENC hardware encoding and NVDEC decoding' 'mesa: VA-API decoding on AMD and Intel')
-    conflicts=(arch-quilly)
     _instalar_app takery Takery "application/x-filmcraft;video/mp4;video/x-m4v;video/quicktime;video/x-matroska;video/webm;video/vnd.avi;video/x-msvideo;application/mxf;video/mp2t;video/mpeg;video/3gpp;" "Video editor: timeline, color, audio and GPU auto captions" "AudioVideo;Video;AudioVideoEditing;"
 }
 package_arch-volury() {
     arch=('any')
     pkgdesc="Volury (Arch Quilly): editor de e-books EPUB 2/3"
     depends=("\${_comum[@]}" "\${_volury[@]}")
-    conflicts=(arch-quilly)
     _instalar_app volury Volury "application/epub+zip;application/x-hyp;" "Editor de e-books EPUB" "Office;Publishing;"
 }
 PKG

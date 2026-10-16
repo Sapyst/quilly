@@ -4,9 +4,10 @@ Quilly (Arch Quilly) — a central da suíte: abre o Noty, o Artry, o Volury, o 
 documentos recentes de todos eles na aba Arquivos.
 
 Port do Quilly de Windows (C# + WebView2). A interface (ui/) é a original, com os textos de Windows
-adaptados. Instalar e atualizar: o Quilly lê a release mais recente do GitHub (Sapyst/quilly), mostra
-"Atualizar vX.Y" quando há versão nova, baixa o pacote, confere o SHA-256 e abre um terminal com
-`sudo pacman -U` (atualizador.py). Publicou release = todo Quilly vê a atualização.
+adaptados. O pacote arch-quilly traz o Quilly e o Noty; Artry, Volury, Fotry e Takery o Quilly instala
+da release mais recente do GitHub (Sapyst/quilly). Ele confere a release ao abrir e de hora em hora,
+avisa com uma notificação quando há versão nova, mostra "Atualizar vX.Y", baixa os pacotes, confere o
+SHA-256 e abre um terminal com `sudo pacman -U` (atualizador.py). Publicou release = todo Quilly vê.
 
 Ponte: {type:'rpc', id, method, args} -> {type:'rpc-reply', id, ok, data, error} (igual ao original;
 AppInfo/FileItem em PascalCase porque a interface depende disso).
@@ -24,7 +25,7 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, AQUI)
 import archhost  # noqa: E402
 import atualizador  # noqa: E402
-from gi.repository import GLib  # noqa: E402
+from gi.repository import Gio, GLib  # noqa: E402
 
 PERFIL = archhost.dados("quilly")
 DADOS = os.path.dirname(PERFIL)                         # ~/.local/share/arch-quilly
@@ -85,10 +86,12 @@ def info_app(a, tem=None):
     """O cartão de um app: instalado?, versão instalada e a do GitHub (atualizador.em_cache)."""
     tem = atualizador.instalados() if tem is None else tem
     cmd = comando_do_app(a["Id"])
-    v = tem.get("arch-quilly") or tem.get(f"arch-{a['Id']}") or versao_do_app(a["Id"])
+    pacote = atualizador.pacote_do_app(a["Id"], tem)
+    v = tem.get(pacote) or versao_do_app(a["Id"])
     remoto = atualizador.em_cache()
     rv = remoto["versao"] if remoto else v
     return dict(a, Installed=bool(cmd), UpdateAvailable=bool(cmd and remoto and atualizador.mais_nova(rv, v)),
+                Removable=bool(cmd and pacote in tem and a["Id"] in atualizador.AVULSOS),
                 InstalledPath=" ".join(cmd or []), SourcePath="", InstalledSize=0, SourceSize=0,
                 InstalledDate=None, SourceDate=None, InstalledVersion=v, SourceVersion=rv)
 
@@ -171,7 +174,7 @@ def lancar(app_id, arquivo=None):
     cmd = comando_do_app(app_id)
     if not cmd:
         nome = next((a["Name"] for a in APPS if a["Id"] == app_id), app_id)
-        raise RuntimeError(f"O {nome} não está instalado. Instale com o pacote arch-quilly (ou arch-{app_id}).")
+        raise RuntimeError(f"O {nome} não está instalado. Instale pela aba Apps do Quilly (pacote arch-{app_id}).")
     subprocess.Popen(cmd + ([arquivo] if arquivo else []), start_new_session=True,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -226,7 +229,9 @@ class Janela(archhost.Host):
         super().__init__(app)
         self.set_size_request(960, 620)
         self.instalando = False
+        self.avisada = None                              # versão que já ganhou notificação nesta sessão
         self.consultar_github(forcar=True)
+        GLib.timeout_add_seconds(60 * 60, lambda: (self.consultar_github(forcar=True), True)[1])
 
     def consultar_github(self, forcar=False):
         """Lê a release mais recente em segundo plano e avisa a interface (os cartões se refazem)."""
@@ -234,6 +239,37 @@ class Janela(archhost.Host):
             antes = atualizador.em_cache()
             depois = atualizador.consultar(forcar)
             if depois and depois != antes:
+                GLib.idle_add(self.enviar, {"type": "apps_refresh"})
+            if depois:
+                GLib.idle_add(self.avisar_atualizacao, depois["versao"])
+        threading.Thread(target=trabalho, daemon=True).start()
+
+    def avisar_atualizacao(self, versao):
+        """Notificação do sistema quando algum pacote instalado da suíte tem versão nova (uma vez por versão)."""
+        tem = atualizador.instalados()
+        if versao == self.avisada or not any(atualizador.mais_nova(versao, v) for v in tem.values()):
+            return False
+        self.avisada = versao
+        n = Gio.Notification.new(f"Quilly {versao} disponível")
+        n.set_body("Abra o Quilly e clique em Atualizar em qualquer app.")
+        self.get_application().send_notification("atualizacao", n)
+        return False
+
+    def remover(self, app_id):
+        """Abre o terminal com `sudo pacman -R` do pacote do app; ao fechar, refaz a lista."""
+        tem = atualizador.instalados()
+        pacote = atualizador.pacote_do_app(app_id, tem)
+        if app_id not in atualizador.AVULSOS:
+            raise RuntimeError("O Quilly e o Noty vêm na base. Pra tirar a suíte toda: sudo pacman -R arch-quilly")
+        if pacote not in tem or pacote == "arch-quilly":
+            raise RuntimeError("Este app veio dentro da suíte antiga (1.2). Atualize o Quilly antes de removê-lo.")
+
+        def trabalho():
+            try:
+                atualizador.remover_no_terminal(pacote).wait()
+            except Exception as e:  # noqa: BLE001
+                GLib.idle_add(self.enviar, {"type": "install_error", "appId": app_id, "error": str(e)})
+            finally:
                 GLib.idle_add(self.enviar, {"type": "apps_refresh"})
         threading.Thread(target=trabalho, daemon=True).start()
 
@@ -297,7 +333,8 @@ class Janela(archhost.Host):
             self.instalar(app["Id"])                     # instalar ou atualizar: o progresso vem por install_progress
             return {"success": True, "started": True}
         if m == "apps.uninstall":
-            raise RuntimeError("Os apps da suíte são removidos pelo pacman (sudo pacman -R arch-quilly).")
+            self.remover(a.get("appId") or "")
+            return {"success": True, "started": True}
         if m == "apps.launch":
             lancar(a.get("appId"), a.get("filePath") if a.get("filePath") and os.path.isfile(a["filePath"]) else None)
             return {"success": True}

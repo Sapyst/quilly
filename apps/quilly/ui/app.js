@@ -208,6 +208,10 @@
             '<div class="card-menu-item" data-action="shortcut" data-appid="' + app.Id + '">' +
               '<span>Criar atalho na Área de Trabalho</span>' +
             '</div>' +
+            (app.Removable ?
+            '<div class="card-menu-item" data-action="uninstall" data-appid="' + app.Id + '">' +
+              '<span>Desinstalar</span>' +
+            '</div>' : '') +
           '</div>' +
         '</div>';
 

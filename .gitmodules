@@ -1,8 +1,11 @@
 [submodule "fotry"]
-	path = fotry
+	path = apps/fotry
 	url = https://github.com/Sapyst/fotry.git
 	branch = fotry
 [submodule "takery"]
-	path = takery
+	path = apps/takery
 	url = https://github.com/Sapyst/takery.git
 	branch = takery
+[submodule "vendor/craft-fonts"]
+	path = vendor/craft-fonts
+	url = https://github.com/storytold/craft-fonts.git

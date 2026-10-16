@@ -22,3 +22,7 @@ node_modules/
 # runtime data that must never leave the machine
 profile/
 dados/
+# windows: suite assembled by the Windows build, and a loose copy of quilly/src/ui
+windows/quilly/Suite/
+windows/quilly/source_apps/
+windows/quilly/ui/

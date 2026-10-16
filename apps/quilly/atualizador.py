@@ -9,9 +9,11 @@ Como funciona:
     a versão instalada e mostra "Atualizar vX.Y" nos cartões.
   - Atualizar baixa o pacote certo pra ~/.cache/arch-quilly/atualizacoes, confere o SHA-256 e abre um
     TERMINAL com `sudo pacman -U …`: a senha de administrador só é digitada no terminal, nunca no app.
-      * com a suíte (arch-quilly) instalada: baixa o pacote da suíte, que atualiza tudo de uma vez;
-      * com apps avulsos (arch-noty, arch-fotry…): baixa o pacote de cada app instalado;
-      * app não instalado: "Instalar" baixa o pacote avulso dele.
+      * a base (arch-quilly) traz o Quilly e o Noty; Artry, Volury, Fotry e Takery são pacotes à parte;
+      * atualizar baixa a base e o pacote de cada app instalado, tudo num `pacman -U` só;
+      * app não instalado: "Instalar" baixa o pacote dele (e o que já estiver instalado, se tiver versão nova);
+      * vindo da 1.2 (a suíte inteira num pacote só): a atualização traz também os quatro apps, pra nenhum sumir;
+      * remover um app abre o terminal com `sudo pacman -R` do pacote dele.
 """
 import hashlib
 import json
@@ -28,6 +30,8 @@ API = f"https://api.github.com/repos/{REPO}/releases/latest"
 AGENTE = "arch-quilly-updater"
 CACHE = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "arch-quilly", "atualizacoes")
 VALIDADE = 15 * 60          # segundos que uma consulta à release vale
+BASE = ("quilly", "noty")                            # vêm no arch-quilly
+AVULSOS = ("artry", "volury", "fotry", "takery")     # cada um no seu pacote, instalados pelo Quilly
 
 _trava = threading.Lock()
 _remoto = {"quando": 0.0, "dados": None, "erro": None}
@@ -98,6 +102,20 @@ def instalados():
     return out
 
 
+def suite_antiga(tem):
+    """arch-quilly até a 1.2: a suíte inteira num pacote só (ela "provides" os quatro apps)."""
+    return "arch-quilly" in tem and _numeros(tem["arch-quilly"]) < (1, 3, 0)
+
+
+def pacote_do_app(app_id, tem):
+    """O pacote que traz `app_id` neste sistema (o Noty vem na base, se ela estiver instalada)."""
+    if app_id == "quilly" or (app_id == "noty" and "arch-quilly" in tem):
+        return "arch-quilly"
+    if app_id in AVULSOS and suite_antiga(tem) and f"arch-{app_id}" not in tem:
+        return "arch-quilly"
+    return f"arch-{app_id}"
+
+
 def _arquivo(remoto, pacote):
     """O asset `pacote-<versão>-1-<arch>.pkg.tar.zst` da release."""
     for nome in remoto["pacotes"]:
@@ -112,12 +130,15 @@ def plano(app_id):
     if not remoto:
         raise RuntimeError("Sem conexão com o GitHub agora. Tente de novo em instantes.")
     tem = instalados()
-    if "arch-quilly" in tem:
-        alvos = ["arch-quilly"]                         # a suíte inteira, num pacote só
-    else:
-        alvos = sorted(n for n in tem if n != "arch-array")
-        if f"arch-{app_id}" not in alvos:
-            alvos.append(f"arch-{app_id}")
+    alvos = sorted(n for n in tem if n != "arch-array"           # o que já está instalado e tem versão nova
+                   and mais_nova(remoto["versao"], tem[n]))
+    if suite_antiga(tem):
+        alvos += [f"arch-{a}" for a in AVULSOS]                    # saem da base: vêm cada um no seu pacote
+    pedido = "arch-quilly" if app_id in BASE and ("arch-quilly" in tem or app_id == "quilly") else f"arch-{app_id}"
+    alvos.append(pedido)
+    if "arch-quilly" in alvos:
+        alvos = [n for n in alvos if n != "arch-noty"]             # a base já traz o Noty
+    alvos = list(dict.fromkeys(alvos))
     nomes = []
     for p in alvos:
         n = _arquivo(remoto, p)
@@ -180,15 +201,23 @@ def _terminal():
     return None
 
 
-def instalar_no_terminal(arquivos):
-    """Abre um terminal com `sudo pacman -U` dos pacotes; devolve o processo (espera-se ele fechar)."""
+def _no_terminal(acao, args, aviso, falhou):
+    """Abre um terminal com `sudo pacman <acao> <args>`; devolve o processo (espera-se ele fechar)."""
     term = _terminal()
     if not term:
-        raise RuntimeError("Nenhum terminal encontrado. Rode: sudo pacman -U " + " ".join(arquivos))
-    aspas = " ".join("'" + a.replace("'", "'\\''") + "'" for a in arquivos)
-    script = ("printf '\\nArch Quilly: instalando a atualização. O pacman pede a sua senha de administrador.\\n\\n'; "
-              f"sudo pacman -U {aspas}; s=$?; echo; "
-              "if [ $s -eq 0 ]; then echo 'Pronto. Pode fechar esta janela.'; else echo 'A instalação não terminou.'; fi; "
+        raise RuntimeError(f"Nenhum terminal encontrado. Rode: sudo pacman {acao} " + " ".join(args))
+    aspas = " ".join("'" + a.replace("'", "'\\''") + "'" for a in args)
+    script = (f"printf '\\nArch Quilly: {aviso} O pacman pede a sua senha de administrador.\\n\\n'; "
+              f"sudo pacman {acao} {aspas}; s=$?; echo; "
+              f"if [ $s -eq 0 ]; then echo 'Pronto. Pode fechar esta janela.'; else echo '{falhou}'; fi; "
               "printf 'Enter para fechar…'; read _")
     return subprocess.Popen([*term, "sh", "-c", script], start_new_session=True,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def instalar_no_terminal(arquivos):
+    return _no_terminal("-U", arquivos, "instalando a atualização.", "A instalação não terminou.")
+
+
+def remover_no_terminal(pacote):
+    return _no_terminal("-R", [pacote], f"removendo o {pacote}.", "A remoção não terminou.")

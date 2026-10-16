@@ -1,3 +1,0 @@
-miniPaint 4.14.3 (https://github.com/viliusle/miniPaint), commit a79733e, MIT license (MINIPAINT-LICENSE.txt).
-Vendored files: dist/bundle.js (unmodified build), images/icons, images/favicon.png.
-Everything Array adds lives in index.html, array.css and array.js; the bundle is not patched.
