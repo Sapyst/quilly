@@ -321,6 +321,7 @@ window.chrome.webview.addEventListener('message', function (ev) {
     return;
   }
   if (m.type === 'action') executaAcao(m.action);
+  if (m.type === 'reload') recarregaDoDisco(m.data);
 });
 
 /* ================================================================= estado */
@@ -434,6 +435,35 @@ function confirmaDescartar() {
     { rotulo: 'Descartar', valor: true },
     { rotulo: 'Cancelar', valor: false, primario: true, cancela: true },
   ]);
+}
+
+/* outro programa mudou o arquivo no disco: sem alteração aqui, atualiza na hora;
+   com alteração não salva, pergunta (uma vez só) antes de jogar fora o que foi digitado. */
+var perguntandoRecarga = false;
+function recarregaDoDisco(dados) {
+  if (!dados || dados.path !== arquivo.path || dados.text === ed.value) return;
+  if (sujo) {
+    if (perguntandoRecarga) return;
+    perguntandoRecarga = true;
+    dialogo('O arquivo foi mudado por outro programa.', [
+      { rotulo: 'Recarregar', valor: true },
+      { rotulo: 'Manter o meu', valor: false, primario: true, cancela: true },
+    ]).then(function (v) {
+      perguntandoRecarga = false;
+      if (v) rpc('file.openPath', { path: arquivo.path }).then(function (d) { aplicaTextoDoDisco(d.text); });
+    });
+    return;
+  }
+  aplicaTextoDoDisco(dados.text);
+}
+function aplicaTextoDoDisco(texto) {
+  var noFim = ed.scrollTop + ed.clientHeight >= ed.scrollHeight - 4;
+  var ini = ed.selectionStart, fim = ed.selectionEnd, topo = ed.scrollTop;
+  ed.value = texto;
+  ed.setSelectionRange(Math.min(ini, texto.length), Math.min(fim, texto.length));
+  ed.scrollTop = noFim ? ed.scrollHeight : topo;   // estava no fim (tipo chat)? segue o fim
+  marcaSujo(false);
+  atualizaContador();
 }
 
 function carrega(dados) {

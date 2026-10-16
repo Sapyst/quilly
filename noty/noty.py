@@ -150,11 +150,48 @@ class Janela(archhost.Host):
         ctx.set_spell_checking_languages([IDIOMAS.get(self.settings.get("spellLang", "pt-BR"), "pt_BR")])
         self.connect("close-request", self.ao_fechar)
         self.criar_acoes()
+        self.monitor = None
+        self.vigiado = None
+        self.ultimo_texto = None      # o que esta janela sabe que está no disco (abriu ou salvou)
+        self.espera_recarga = 0
 
     # ---------- abrir arquivo vindo de fora (linha de comando, outro app) ----------
     def abrir_arquivo_externo(self, caminho):
         """Já tem arquivo nesta janela? Abre outra (uma janela por arquivo, como no original)."""
         Janela(self.get_application(), caminho).present()
+
+    # ---------- recarga em tempo real (outro programa mudou o arquivo) ----------
+    def vigiar(self, caminho, texto):
+        """Passa a vigiar `caminho`. `texto` é o que acabou de ser lido/gravado, pra não recarregar o próprio salvar."""
+        self.ultimo_texto = texto
+        caminho = os.path.abspath(caminho)
+        if caminho == self.vigiado:
+            return
+        if self.monitor:
+            self.monitor.cancel()
+        self.vigiado = caminho
+        self.monitor = Gio.File.new_for_path(caminho).monitor_file(Gio.FileMonitorFlags.WATCH_MOVES, None)
+        self.monitor.connect("changed", self.ao_mudar_no_disco)
+
+    def ao_mudar_no_disco(self, _mon, _f, _outro, evento):
+        if evento not in (Gio.FileMonitorEvent.CHANGES_DONE_HINT, Gio.FileMonitorEvent.CHANGED,
+                          Gio.FileMonitorEvent.CREATED, Gio.FileMonitorEvent.RENAMED,
+                          Gio.FileMonitorEvent.MOVED_IN):
+            return
+        if self.espera_recarga:                  # rajada de eventos de um salvar só: lê uma vez no fim
+            GLib.source_remove(self.espera_recarga)
+        self.espera_recarga = GLib.timeout_add(200, self.recarregar)
+
+    def recarregar(self):
+        self.espera_recarga = 0
+        try:
+            dados = ler_texto(self.vigiado)
+        except (OSError, ValueError):
+            return False                         # sumiu ou ficou ilegível: deixa o texto como está
+        if dados["text"] != self.ultimo_texto:
+            self.ultimo_texto = dados["text"]
+            self.enviar({"type": "reload", "data": dados})
+        return False
 
     # ---------- menu do botão direito ----------
     def criar_acoes(self):
@@ -251,15 +288,21 @@ class Janela(archhost.Host):
 
                 def escolheu(cs):
                     try:
-                        ok(ler_texto(cs[0]) if cs else None)
+                        dados = ler_texto(cs[0]) if cs else None
+                        if dados:
+                            self.vigiar(dados["path"], dados["text"])
+                        ok(dados)
                     except Exception as e:  # noqa: BLE001
                         self.responder(id_, False, erro=str(e))
                 self.escolher_arquivo("Abrir", filtros, escolheu)
             elif metodo == "file.openPath":
-                ok(ler_texto(a["path"]))
+                dados = ler_texto(a["path"])
+                self.vigiar(dados["path"], dados["text"])
+                ok(dados)
             elif metodo == "file.save":
                 with open(a["path"], "w", encoding="utf-8", newline="") as f:
                     f.write(a.get("text") or "")
+                self.vigiar(a["path"], a.get("text") or "")
                 ok({"ok": True})
             elif metodo == "file.saveDialog":
                 nome = a.get("name") or "sem-titulo.hyp"
