@@ -10,7 +10,7 @@
 :root {
   /* Valores de seguranca: se o theme.css do usuario sumir ou quebrar,
      o app continua legivel. O theme.css sobrescreve tudo isto. */
-  --fundo: rgba(13, 20, 15, 0.35);
+  --fundo: rgba(30, 30, 30, 0.80);
   --texto: rgba(238, 244, 240, 0.96);
   --texto-suave: rgba(238, 244, 240, 0.45);
   --fonte: "Cascadia Mono", Consolas, monospace;
@@ -234,6 +234,7 @@ body.arrastando::after {
   background: rgba(0,0,0,.35); font-size: 15px; pointer-events: none;
 }
 </style>
+<style id="tema-sistema">/* o vidro do sistema (noty.py, vidro_do_sistema) */</style>
 <style id="tema-do-usuario">/* theme.css entra aqui */</style>
 </head>
 <body>
@@ -322,6 +323,7 @@ window.chrome.webview.addEventListener('message', function (ev) {
   }
   if (m.type === 'action') executaAcao(m.action);
   if (m.type === 'reload') recarregaDoDisco(m.data);
+  if (m.type === 'sistema') document.getElementById('tema-sistema').textContent = m.css || '';
 });
 
 /* ================================================================= estado */

@@ -35,6 +35,49 @@ TEMA_PADRAO = """/* ============================================================
 
 :root {
   /* O vidro: este fundo fica POR CIMA do desfoque da janela (Hyprland).
+     var(--sistema-*) = o vidro do proprio sistema (a mesma cor e opacidade
+     dos outros apps; muda junto quando o tema claro/escuro troca).
+     Pra um vidro so seu, troque por uma cor: rgba(13, 20, 15, 0.35) */
+  --fundo: var(--sistema-fundo, rgba(30, 30, 30, 0.80));
+
+  /* Texto do editor */
+  --texto: var(--sistema-texto, rgba(240, 240, 240, 0.96));
+  --texto-suave: var(--sistema-texto-suave, rgba(240, 240, 240, 0.50));
+
+  /* Fonte e ritmo (a estetica maquina-de-escrever da tela inicial) */
+  --fonte: "Cascadia Mono", "Adwaita Mono", "JetBrains Mono", "DejaVu Sans Mono", monospace;
+  --tamanho: 15px;
+  --altura-linha: 1.75;
+  --largura-texto: 68ch;   /* coluna central; use 100% pra ocupar tudo */
+
+  /* Cursor e selecao (o verde do Noty, mais escuro no tema claro) */
+  --selecao: var(--sistema-selecao, rgba(126, 214, 158, 0.30));
+  --cursor: var(--sistema-cursor, #8fd6a8);
+
+  /* Menus, paineis e barra de status */
+  --painel: var(--sistema-painel, rgba(30, 30, 30, 0.97));
+  --painel-borda: var(--sistema-borda, rgba(255, 255, 255, 0.10));
+  --realce: var(--sistema-realce, rgba(130, 220, 165, 0.16));
+
+  /* Barra de rolagem (o "polegar" e o hover dele). Pra ir alem das
+     cores, sobrescreva os seletores ::-webkit-scrollbar-* aqui. */
+  --rolagem: var(--sistema-rolagem, rgba(240, 240, 240, 0.18));
+  --rolagem-hover: var(--sistema-cursor, rgba(143, 214, 168, 0.45));
+}
+
+/* Os dialogos do app (sair sem salvar, avisos...) tambem obedecem as
+   variaveis acima — e podem ser re-estilizados aqui por seletor:
+   .dlg-fundo (o embacado), .dlg (a caixa), .dlg-msg (o texto),
+   .dlg-btn e .dlg-btn.primario (os botoes). */
+"""
+# o tema padrão até a 1.3: um theme.css idêntico a ele é trocado pelo novo (não é personalizado)
+TEMA_PADRAO_ANTIGO = """/* ============================================================
+   Tema do Noty — edite a vontade, isto e CSS puro.
+   Salvou, aplicou. Estragou tudo? Botao "Restaurar padrao".
+   ============================================================ */
+
+:root {
+  /* O vidro: este fundo fica POR CIMA do desfoque da janela (Hyprland).
      Quanto mais transparente, mais desktop atravessa.
      Fume escuro, um verde bem sutil, quase incolor. */
   --fundo: rgba(13, 20, 15, 0.35);
@@ -69,6 +112,44 @@ TEMA_PADRAO = """/* ============================================================
    .dlg-fundo (o embacado), .dlg (a caixa), .dlg-msg (o texto),
    .dlg-btn e .dlg-btn.primario (os botoes). */
 """
+
+ESTADO_TEMA = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "hypr-tema")
+
+
+def vidro_do_sistema():
+    """O vidro do Arch Aero (hypr-tema): a cor do tema atual (claro/escuro) e a opacidade dos outros apps.
+    Sem o hypr-tema (outro desktop), o escuro padrão a 80%."""
+    try:
+        modo = open(os.path.join(ESTADO_TEMA, "tema"), encoding="utf-8").read().strip()
+    except OSError:
+        modo = "escuro"
+    clara, escura, alfa = "f6f6f6", "1e1e1e", 0.80
+    try:
+        partes = open(os.path.join(ESTADO_TEMA, "cores"), encoding="utf-8").read().split()
+        clara, escura, alfa = partes[1], partes[2], float(partes[3])
+    except (OSError, IndexError, ValueError):
+        pass
+    escuro = modo != "claro"
+    cor = escura if escuro else clara
+    try:
+        r, g, b = (int(cor[i:i + 2], 16) for i in (0, 2, 4))
+    except ValueError:
+        r, g, b = (30, 30, 30) if escuro else (246, 246, 246)
+    alfa = min(max(alfa, 0.55), 1.0)            # nunca transparente a ponto de lavar o texto
+    t = "240, 240, 240" if escuro else "30, 30, 30"
+    v = {
+        "--sistema-fundo": f"rgba({r}, {g}, {b}, {alfa:.2f})",
+        "--sistema-painel": f"rgba({r}, {g}, {b}, 0.97)",
+        "--sistema-texto": f"rgba({t}, 0.96)",
+        "--sistema-texto-suave": f"rgba({t}, 0.50)",
+        "--sistema-borda": "rgba(255, 255, 255, 0.10)" if escuro else "rgba(0, 0, 0, 0.10)",
+        "--sistema-rolagem": f"rgba({t}, 0.18)",
+        "--sistema-cursor": "#8fd6a8" if escuro else "#2e8a54",
+        "--sistema-selecao": "rgba(126, 214, 158, 0.30)" if escuro else "rgba(46, 138, 84, 0.22)",
+        "--sistema-realce": "rgba(130, 220, 165, 0.16)" if escuro else "rgba(46, 138, 84, 0.14)",
+    }
+    return ":root { " + " ".join(f"{k}: {x};" for k, x in v.items()) + " }", f"rgba({r}, {g}, {b}, {alfa:.2f})"
+
 
 
 def ler_json(nome, padrao):
@@ -138,12 +219,18 @@ class Janela(archhost.Host):
         if janela.get("Maximized"):
             self.maximize()
         # vidro: janela e barra transparentes (o tema pinta --fundo por cima)
-        css = Gtk.CssProvider()
-        css.load_from_string("window.noty, window.noty headerbar { background: rgba(10,14,11,0.30); }"
-                             " window.noty headerbar { box-shadow: none; }")
-        Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), css,
+        # a janela é transparente; quem pinta o vidro é a página (--fundo). A barra de título
+        # recebe a mesma cor do vidro do sistema, pra janela ser uma peça só.
+        self.css_vidro = Gtk.CssProvider()
+        Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), self.css_vidro,
                                                   Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 1)
         self.add_css_class("noty")
+        self.vigias_tema = []
+        for nome in ("tema", "cores"):
+            m = Gio.File.new_for_path(os.path.join(ESTADO_TEMA, nome)).monitor_file(Gio.FileMonitorFlags.NONE, None)
+            m.connect("changed", lambda *_: GLib.timeout_add(150, self.aplicar_vidro))
+            self.vigias_tema.append(m)
+        self.aplicar_vidro()
         # corretor ortográfico (Enchant/hunspell)
         ctx = self.web.get_context()
         ctx.set_spell_checking_enabled(True)
@@ -154,6 +241,21 @@ class Janela(archhost.Host):
         self.vigiado = None
         self.ultimo_texto = None      # o que esta janela sabe que está no disco (abriu ou salvou)
         self.espera_recarga = 0
+
+    # ---------- o vidro do sistema (muda junto com o tema claro/escuro) ----------
+    def aplicar_vidro(self):
+        css, fundo = vidro_do_sistema()
+        self.css_vidro.load_from_string("window.noty { background: transparent; }"
+                                        f" window.noty headerbar {{ background: {fundo}; box-shadow: none; }}")
+        try:
+            self.enviar({"type": "sistema", "css": css})
+        except Exception:  # noqa: BLE001  (a página ainda não carregou: ao_carregar manda de novo)
+            pass
+        return False
+
+    def ao_carregar(self):
+        super().ao_carregar()
+        self.aplicar_vidro()
 
     # ---------- abrir arquivo vindo de fora (linha de comando, outro app) ----------
     def abrir_arquivo_externo(self, caminho):
@@ -323,6 +425,10 @@ class Janela(archhost.Host):
                 caminho = os.path.join(PERFIL, "theme.css")
                 if not os.path.exists(caminho):
                     open(caminho, "w", encoding="utf-8").write(TEMA_PADRAO)
+                else:
+                    with open(caminho, encoding="utf-8") as f:
+                        if f.read() == TEMA_PADRAO_ANTIGO:     # o padrão antigo, sem personalização: atualiza
+                            open(caminho, "w", encoding="utf-8").write(TEMA_PADRAO)
                 ok({"text": open(caminho, encoding="utf-8").read()})
             elif metodo == "theme.write":
                 open(os.path.join(PERFIL, "theme.css"), "w", encoding="utf-8").write(a.get("text") or "")
