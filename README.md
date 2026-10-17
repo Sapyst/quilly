@@ -14,14 +14,15 @@ Arch Linux first (`linux` packages in this repo) · the Windows originals live i
 | App | Command | What it does |
 |---|---|---|
 | **Quilly** | `quilly` | The hub: opens the apps and gathers every recent document of the suite in one place. |
-| **Noty** | `noty file` | A plain, glassy text editor for `.hyp`, Markdown, `.txt` and `.html`, with a pt-BR spell checker built in. |
+| **Noty** | `noty file` | A light, glassy text editor for `.hyp`, Markdown, `.txt` and `.html`, with a Markdown preview and a pt-BR spell checker built in. Native (Rust). |
 | **Artry** | `artry file` | Rich documents and code: a coordinated ruler with sub-rulers, page mode, `.artry`, `.hyp`, `.md`, `.rtf` and `.docx` with formatting, PDF and printing. |
 | **Volury** | `volury file` | An EPUB 2/3 e-book editor: chapters, images, CSS, table of contents, validation; imports `.hyp` with its attachments. |
 | **Fotry** | `fotry image` | A native image editor: layers, masks, adjustments, type, PSD, camera RAW and AI upscale (built on PhotoCraft). |
 | **Takery** | `takery video` | A native video editor: timeline, color, audio, titles, hardware decoding/encoding and **one-click auto captions** on the GPU (built on FilmCraft). |
 
-Every app has its own initial and the same icon design (q n a v f t). Quilly, Noty, Artry and Volury are GTK4 +
-libadwaita windows around a WebKit view (HTML/JS interface, a small Python native side); Fotry and Takery are
+Every app has its own initial and the same icon design (q n a v f t). Noty is a native Rust app (GTK4 +
+libadwaita + GtkSourceView + libspelling); Quilly, Artry and Volury are GTK4 + libadwaita windows around a WebKit
+view (HTML/JS interface, a small Python native side), on their way to Rust too; Fotry and Takery are
 native Rust apps drawn on the GPU. No emoji anywhere, neutral colors, dark by default, the desktop's accent.
 
 ## Install (Arch Linux)
@@ -49,7 +50,7 @@ terminal). An update takes the base and every installed app in one transaction, 
 files entirely. Coming from 1.2 (the whole suite in one package), the update also brings the four apps as their
 own packages, so none disappears. "Desinstalar" in a card's menu removes that app (`sudo pacman -R`).
 Publishing a release here updates everyone's suite. `pacman` pulls the
-dependencies (python-gobject, gtk4, libadwaita, webkitgtk-6.0, and for the writing apps hunspell/enchant,
+dependencies (python-gobject, gtk4, libadwaita, webkitgtk-6.0, gtksourceview5 and libspelling for Noty, hunspell/enchant,
 python-docx and python-markdown; Vulkan and GTK3 for Fotry and Takery, whisper-cpp and ggml-vulkan for Takery's captions). `arch-noty` alone and the base do not mix: the base
 already contains Noty. Remove everything with `sudo pacman -R arch-quilly arch-artry arch-volury arch-fotry arch-takery`.
 
@@ -94,6 +95,21 @@ Its temporary files live in `~/.cache/arch-quilly/fotry/upscale/` (disk, not RAM
 Pressure works on X11 and under XWayland (Preferences › Performance › Linux display server: X11). Native Wayland
 tablet input is not there yet.
 
+### Noty
+
+Noty 2 is Rust: a GtkSourceView editor (undo, search, big files) in one layer of the desktop's glass, read live
+from the Aero theme, with a centered 68-column text. The same `.hyp` format as before (Markdown with the images
+embedded at the end of the file), the same settings and recent files (`~/.local/share/arch-quilly/noty/`).
+
+- Alt shows the menu bar; right click: spelling suggestions, bold/italic/code, search the web, open/save.
+- Ctrl+M: Markdown preview (images from the `.hyp` included, links open in the browser). Ctrl+F: find.
+- Paste or drop an image: it becomes an attachment inside the `.hyp`. Save as `.txt` drops the images, `.html`
+  writes a self-contained page.
+- Another program changed the file: it reloads (or asks, if you have unsaved changes).
+- Theme › Edit theme (Ctrl+T): `theme-gtk.css`, free GTK CSS on top of the glass, applied as you save.
+
+The first Noty (Python + WebKit) is in the git history (up to `f0683f3`).
+
 ### Array 1
 
 The first image editor (Array: miniPaint inside a GTK4 + WebKit shell) left the repository in 1.3; its code is in the git history (up to `1e245af`).
@@ -123,9 +139,9 @@ builds it with `cargo build --release -p filmcraft --features whisper`.
 ## Where things are
 
 - Data: `~/.local/share/arch-quilly/<app>/` (settings, Noty's theme, recent files). Logs: `~/.cache/arch-quilly/<app>.log`.
-- Code: one folder per app in `apps/`: `quilly`, `noty`, `artry`, `volury` (each with `ui/` = the interface),
-  and `fotry`, `takery` (native). `comum/` is the shared GTK4 + WebKit shell (`archhost.py`). To run from the
-  folder without installing: `python3 apps/noty/noty.py`.
+- Code: one folder per app in `apps/`: `quilly`, `artry`, `volury` (each with `ui/` = the interface),
+  and `noty`, `fotry`, `takery` (native). `comum/` is the shared GTK4 + WebKit shell (`archhost.py`). To run from the
+  folder without installing: `python3 apps/artry/artry.py`, or `cargo run --release` in `apps/noty`.
   `ARCH_DEV=1` turns on the web inspector.
 - `windows/`: the original C# (.NET + WinForms + WebView2) sources of Quilly, Noty, Artry and Volury, as they were
   on Windows (their build output stays on disk, out of git). `build.ps1` in each folder rebuilds them. They go
@@ -140,8 +156,8 @@ builds it with `cargo build --release -p filmcraft --features whisper`.
 ```
 
 Writes to `dist/` the base `arch-quilly` (Quilly + Noty), one package per app and `SHA256SUMS`. Needs `base-devel` (makepkg),
-python-gobject with GdkPixbuf for the icon sizes, and Rust (`rust`) for Fotry and Takery, built from
-the submodules (cargo's output goes to `~/.cache/arch-quilly-cargo/`, off NTFS). To publish a version: bump
+python-gobject with GdkPixbuf for the icon sizes, and Rust (`rust`, plus `gtksourceview5` and `libspelling`
+for Noty) for Noty, Fotry and Takery, the last two built from the submodules (cargo's output goes to `~/.cache/arch-quilly-cargo/`, off NTFS). To publish a version: bump
 `apps/quilly/VERSAO`, run `./construir.sh`, then create the release `vX.Y.Z` with every `dist/*-X.Y.Z-*` package and
 `dist/SHA256SUMS` (`gh release create vX.Y.Z dist/*-X.Y.Z-1-*.pkg.tar.zst dist/SHA256SUMS`).
 

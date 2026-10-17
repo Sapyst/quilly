@@ -1,0 +1,23 @@
+[package]
+name = "noty"
+version = "2.0.0"
+edition = "2024"
+description = "Noty (Arch Quilly): a light, glassy text and Markdown editor in Rust (GTK4 + GtkSourceView)"
+license = "MIT"
+
+[dependencies]
+gtk = { package = "gtk4", version = "0.11", features = ["v4_14"] }
+adw = { package = "libadwaita", version = "0.9", features = ["v1_6"] }
+sourceview5 = "0.11"
+libspelling = "0.5"
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
+base64 = "0.22"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp"] }
+regex = "1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = true

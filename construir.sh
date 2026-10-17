@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # construir.sh — gera os pacotes do Arch da Arch Quilly em ./dist:
-#   arch-quilly-<versão>-any.pkg.tar.zst   a base: o Quilly (a central) com o Noty
+#   arch-quilly-<versão>-x86_64.pkg.tar.zst   a base: o Quilly (a central) com o Noty
 #   arch-artry-…, arch-volury-…, arch-fotry-…, arch-takery-…   os outros apps, cada um no seu pacote;
 #       o Quilly baixa da release do GitHub o que o usuário pedir pra instalar (atualizador.py)
 #   arch-noty-…   o Noty sozinho, pra quem não quer o Quilly (não se mistura com a base, que já tem o Noty)
@@ -10,6 +10,7 @@ set -euo pipefail
 RAIZ="$(cd "$(dirname "$0")" && pwd)"
 VERSAO="$(cat "$RAIZ/apps/quilly/VERSAO")"
 TRAB="${XDG_CACHE_HOME:-$HOME/.cache}/arch-quilly-build"
+# Noty é nativo (Rust, GTK4 + GtkSourceView): o código mora em apps/noty, compilado aqui.
 # Fotry e Takery são nativos (Rust): o código de cada um é um fork no GitHub, que mora aqui como submódulo.
 #   Fotry  = fork do PhotoCraft (apps/fotry),  binário photocraft
 #   Takery = fork do FilmCraft  (apps/takery), binário filmcraft (com Whisper)
@@ -27,17 +28,18 @@ done
 compilar() {   # compilar <pasta> <binário> <nome> [argumentos do cargo…]
     local src=$1 bin=$2 nome=$3; shift 3
     local alvo="$CARGO_ALVO/$(basename "$src")"
-    if [ ! -x "$alvo/release/$bin" ] || [ -n "$(find "$src/crates" "$src/apps" -name '*.rs' -newer "$alvo/release/$bin" -print -quit)" ]; then
+    if [ ! -x "$alvo/release/$bin" ] || [ -n "$(find "$src" -path "$src/target" -prune -o \( -name '*.rs' -o -name Cargo.toml \) -newer "$alvo/release/$bin" -print -quit)" ]; then
         echo "Compilando o $nome (cargo build --release)…"
         (cd "$src" && CRAFT_FONTS_DIR="$CRAFT_FONTS_DIR" CARGO_TARGET_DIR="$alvo" cargo build --release "$@")
     fi
 }
+compilar "$RAIZ/apps/noty" noty Noty
 compilar "$FOTRY_SRC" photocraft Fotry -p photocraft
 compilar "$TAKERY_SRC" filmcraft Takery -p filmcraft --features whisper
 rm -rf "$TRAB" && mkdir -p "$TRAB/arvore" "$RAIZ/dist"
 
 # ---------- árvore de arquivos de cada app (o que vai pra /usr/share/arch-quilly/<app>) ----------
-for app in quilly noty artry volury; do
+for app in quilly artry volury; do
     destino="$TRAB/arvore/$app"
     mkdir -p "$destino"
     cp -r "$RAIZ/apps/$app/." "$destino/"
@@ -45,6 +47,10 @@ for app in quilly noty artry volury; do
     find "$destino" -name "__pycache__" -prune -exec rm -rf {} +
     rm -f "$destino"/*.bak* "$destino/ui"/*.bak* 2>/dev/null || true
 done
+# Noty: o binário, o dicionário pt-BR embutido e a versão
+mkdir -p "$TRAB/arvore/noty"
+cp "$CARGO_ALVO/noty/release/noty" "$TRAB/arvore/noty/noty"
+cp -r "$RAIZ/apps/noty/hunspell" "$RAIZ/apps/noty/VERSAO" "$TRAB/arvore/noty/"
 # Fotry e Takery: o binário e as licenças do projeto de origem (MIT OR Apache-2.0, NOTICE, atribuições)
 nativo() {   # nativo <app> <pasta> <binário> <origem> <url da origem>
     local app=$1 src=$2 bin=$3 origem=$4 url=$5
@@ -81,7 +87,8 @@ arch=('x86_64')
 url="https://github.com/Sapyst/quilly"
 license=('MIT')
 _comum=('python' 'python-gobject' 'gtk4' 'libadwaita' 'webkitgtk-6.0' 'xdg-utils' 'desktop-file-utils' 'shared-mime-info')
-_noty=('hunspell' 'enchant')
+_nativo=('xdg-utils' 'desktop-file-utils' 'shared-mime-info')
+_noty=('gtk4' 'libadwaita' 'gtksourceview5' 'libspelling' 'enchant' 'hunspell')   # nativo (Rust)
 _artry=('python-docx' 'python-markdown' 'fontconfig')
 _volury=('python-markdown')
 _fotry=('vulkan-icd-loader' 'libxkbcommon' 'wayland' 'gtk3' 'curl' 'libarchive' 'xdg-utils' 'desktop-file-utils' 'shared-mime-info')   # nativo (wgpu); curl+bsdtar instalam o motor de IA do Upscale
@@ -90,12 +97,18 @@ _takery=('vulkan-icd-loader' 'libxkbcommon' 'wayland' 'gtk3' 'alsa-lib' 'libva' 
 # instala um app: arquivos, lançador, .desktop, ícones, tipos de arquivo
 _instalar_app() {
     local app=\$1 Nome=\$2 mimes=\$3 descricao=\$4 categorias=\$5
-    if [ "\$app" = fotry ] || [ "\$app" = takery ]; then
-        # nativos: binário em /usr/lib, licenças do projeto de origem em /usr/share/licenses
+    if [ "\$app" = noty ] || [ "\$app" = fotry ] || [ "\$app" = takery ]; then
+        # nativos: binário em /usr/lib, licenças do projeto de origem (forks) em /usr/share/licenses
         install -Dm755 "\$startdir/arvore/\$app/\$app" "\$pkgdir/usr/lib/arch-quilly/\$app/\$app"
         install -Dm644 "\$startdir/arvore/\$app/VERSAO" "\$pkgdir/usr/share/arch-quilly/\$app/VERSAO"
-        install -d "\$pkgdir/usr/share/licenses/\$pkgname"
-        cp -r "\$startdir/arvore/\$app/licencas/"* "\$pkgdir/usr/share/licenses/\$pkgname/"
+        if [ -d "\$startdir/arvore/\$app/licencas" ]; then
+            install -d "\$pkgdir/usr/share/licenses/\$pkgname"
+            cp -r "\$startdir/arvore/\$app/licencas/"* "\$pkgdir/usr/share/licenses/\$pkgname/"
+        fi
+        if [ -d "\$startdir/arvore/\$app/hunspell" ]; then
+            install -d "\$pkgdir/usr/share/arch-quilly/\$app"
+            cp -r "\$startdir/arvore/\$app/hunspell" "\$pkgdir/usr/share/arch-quilly/\$app/"
+        fi
         install -Dm755 /dev/stdin "\$pkgdir/usr/bin/\$app" <<LANCADOR
 #!/bin/sh
 # \$Nome (Arch Quilly), nativo. Mensagens em ~/.cache/arch-quilly/\$app.log
@@ -166,7 +179,7 @@ MIME
 }
 
 package_arch-quilly() {
-    arch=('any')
+    arch=('x86_64')
     pkgdesc="Arch Quilly: the suite hub (Quilly) with Noty; installs Artry, Volury, Fotry and Takery from GitHub"
     depends=("\${_comum[@]}" "\${_noty[@]}")
     optdepends=('hunspell-en_us: corretor em inglês no Noty' 'hunspell-es_any: corretor em espanhol no Noty'
@@ -177,9 +190,9 @@ package_arch-quilly() {
     _instalar_app noty Noty "application/x-hyp;text/markdown;text/plain;text/html;" "Editor de texto simples com vidro: .hyp, Markdown e texto" "Office;TextEditor;Utility;"
 }
 package_arch-noty() {
-    arch=('any')
+    arch=('x86_64')
     pkgdesc="Noty (Arch Quilly): editor de texto simples com vidro — .hyp, Markdown e texto"
-    depends=("\${_comum[@]}" "\${_noty[@]}")
+    depends=("\${_nativo[@]}" "\${_noty[@]}")
     optdepends=('hunspell-en_us: corretor em inglês' 'hunspell-es_any: corretor em espanhol' 'hunspell-fr-comprehensive: corretor em francês')
     conflicts=(arch-quilly)
     _instalar_app noty Noty "application/x-hyp;text/markdown;text/plain;text/html;" "Editor de texto simples com vidro: .hyp, Markdown e texto" "Office;TextEditor;Utility;"
