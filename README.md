@@ -147,7 +147,8 @@ the submodules (cargo's output goes to `~/.cache/arch-quilly-cargo/`, off NTFS).
 
 ## Credits and licenses
 
-- Quilly, Noty, Artry, Volury, Array 1 and our changes in Fotry and Takery: [MIT](LICENSE).
+- Quilly, Noty, Artry, Volury, Array 1 and our changes in Fotry and Takery: [GPL-3.0-or-later](LICENSE)
+  (earlier releases were MIT and stay MIT).
 - Fotry: a fork of [PhotoCraft](https://github.com/storytold/photocraft) by the ArtCraft team, MIT OR Apache-2.0;
   its licenses, NOTICE and attributions are installed in `/usr/share/licenses/<package>/photocraft/`.
 - Takery: a fork of [FilmCraft](https://github.com/storytold/filmcraft) by the ArtCraft team, MIT OR Apache-2.0;
