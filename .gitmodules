@@ -9,3 +9,7 @@
 [submodule "vendor/craft-fonts"]
 	path = vendor/craft-fonts
 	url = https://github.com/storytold/craft-fonts.git
+[submodule "apps/kromar"]
+	path = apps/kromar
+	url = https://github.com/Sapyst/kromar.git
+	branch = main

@@ -52,22 +52,32 @@ APPS = [
      "Description": "Edição de vídeo em linha do tempo, cor, áudio, títulos e legendas automáticas pela GPU "
                     "(Whisper). Nativo, com aceleração por hardware, baseado no FilmCraft.",
      "Icon": "assets/takery.png", "Formats": [".fcproj", ".mp4", ".mov", ".mkv", ".webm", ".mxf", ".srt", ".vtt"]},
+    {"Id": "kromar", "Name": "Kromar", "Subtitle": "Câmara escura RAW com Depth Map neural",
+     "Description": "Editor de fotos RAW/JPG/PNG 100% não-destrutivo: revelação em Rust, balanço CIELAB 4-zonas, "
+                    "máscaras avançadas, Depth Anything V2 + bokeh óptico progressivo e IA local.",
+     "Icon": "assets/kromar.png", "Formats": [".cr3", ".cr2", ".dng", ".arw", ".nef", ".jpg", ".jpeg", ".png"]},
 ]
 RECOMENDADO = {".hyp": ("Noty / Artry", "noty"), ".artry": ("Artry", "artry"), ".docx": ("Artry", "artry"),
                ".rtf": ("Artry", "artry"), ".md": ("Noty", "noty"), ".txt": ("Noty", "noty"),
                ".html": ("Noty", "noty"), ".epub": ("Volury", "volury"),
-               ".pcraft": ("Fotry", "fotry"), ".psd": ("Fotry", "fotry"), ".png": ("Fotry", "fotry"), ".jpg": ("Fotry", "fotry"),
-               ".jpeg": ("Fotry", "fotry"), ".webp": ("Fotry", "fotry"), ".gif": ("Fotry", "fotry"),
+               ".pcraft": ("Fotry", "fotry"), ".psd": ("Fotry", "fotry"), ".png": ("Fotry", "fotry"), ".jpg": ("Kromar / Fotry", "kromar"),
+               ".jpeg": ("Kromar / Fotry", "kromar"), ".webp": ("Fotry", "fotry"), ".gif": ("Fotry", "fotry"),
                ".bmp": ("Fotry", "fotry"), ".tif": ("Fotry", "fotry"), ".tiff": ("Fotry", "fotry"),
-               ".cr2": ("Fotry", "fotry"), ".cr3": ("Fotry", "fotry"), ".nef": ("Fotry", "fotry"),
-               ".arw": ("Fotry", "fotry"), ".dng": ("Fotry", "fotry"), ".raf": ("Fotry", "fotry"),
+               ".cr2": ("Kromar", "kromar"), ".cr3": ("Kromar", "kromar"), ".nef": ("Kromar", "kromar"),
+               ".arw": ("Kromar", "kromar"), ".dng": ("Kromar", "kromar"), ".raf": ("Fotry", "fotry"),
                ".orf": ("Fotry", "fotry"), ".rw2": ("Fotry", "fotry"), ".pef": ("Fotry", "fotry"),
                ".fcproj": ("Takery", "takery"), ".mp4": ("Takery", "takery"), ".mov": ("Takery", "takery"),
                ".mkv": ("Takery", "takery"), ".webm": ("Takery", "takery"), ".mxf": ("Takery", "takery")}
 
 
 def comando_do_app(app_id):
-    """Instalado: /usr/bin/<app>. Rodando da pasta do projeto: python3 ../<app>/<app>.py."""
+    """Sub-app compilado pelo Quilly (~/.local/bin ou subapp_bin), /usr/bin/<app> ou pasta do projeto."""
+    wrapper_local = os.path.join(atualizador.BIN_DIR, app_id + atualizador.EXE_EXT)
+    if os.path.isfile(wrapper_local) and os.access(wrapper_local, os.X_OK):
+        return [wrapper_local]
+    bin_git = atualizador.subapp_bin(app_id)
+    if os.path.isfile(bin_git):
+        return [bin_git]
     no_sistema = shutil.which(app_id)
     if no_sistema:
         return [no_sistema]
@@ -83,17 +93,38 @@ def versao_do_app(app_id):
 
 
 def info_app(a, tem=None):
-    """O cartão de um app: instalado?, versão instalada e a do GitHub (atualizador.em_cache)."""
+    """O cartão de um app: instalado?, versão/commit instalado e o do GitHub (release ou repo Git)."""
     tem = atualizador.instalados() if tem is None else tem
-    cmd = comando_do_app(a["Id"])
-    pacote = atualizador.pacote_do_app(a["Id"], tem)
-    v = tem.get(pacote) or versao_do_app(a["Id"])
+    app_id = a["Id"]
+    cmd = comando_do_app(app_id)
+    pacote = atualizador.pacote_do_app(app_id, tem)
+    v = tem.get(pacote) or versao_do_app(app_id)
     remoto = atualizador.em_cache()
     rv = remoto["versao"] if remoto else v
-    return dict(a, Installed=bool(cmd), UpdateAvailable=bool(cmd and remoto and atualizador.mais_nova(rv, v)),
-                Removable=bool(cmd and pacote in tem and a["Id"] in atualizador.AVULSOS),
+
+    git_local = atualizador.subapp_commit_local(app_id)
+    git_remoto = (atualizador.commits_em_cache().get(app_id) or {}).get("sha", "")
+    tem_upd_git = bool(cmd and atualizador.tem_atualizacao_git(app_id))
+    tem_upd_rel = bool(cmd and remoto and atualizador.mais_nova(rv, v))
+
+    if git_local:
+        v_disp = f"{v} ({git_local})"
+    else:
+        v_disp = v
+    if tem_upd_git and git_remoto:
+        rv_disp = f"git:{git_remoto}"
+    else:
+        rv_disp = rv
+
+    removivel = bool(
+        cmd and app_id in atualizador.AVULSOS and (
+            atualizador.subapp_instalado_git(app_id) or pacote in tem
+        )
+    )
+    return dict(a, Installed=bool(cmd), UpdateAvailable=bool(tem_upd_git or tem_upd_rel),
+                Removable=removivel,
                 InstalledPath=" ".join(cmd or []), SourcePath="", InstalledSize=0, SourceSize=0,
-                InstalledDate=None, SourceDate=None, InstalledVersion=v, SourceVersion=rv)
+                InstalledDate=None, SourceDate=None, InstalledVersion=v_disp, SourceVersion=rv_disp)
 
 
 def lista_apps():
@@ -183,7 +214,7 @@ def abrir_com(caminho, app_id):
     if not os.path.isfile(caminho):
         raise FileNotFoundError(f"Arquivo não encontrado: {caminho}")
     adicionar_recente(caminho)
-    if app_id in ("noty", "artry", "volury", "fotry", "takery"):
+    if app_id in ("noty", "artry", "volury", "fotry", "takery", "kromar"):
         lancar(app_id, caminho)
         return
     ext = os.path.splitext(caminho)[1].lower()
@@ -234,33 +265,50 @@ class Janela(archhost.Host):
         GLib.timeout_add_seconds(60 * 60, lambda: (self.consultar_github(forcar=True), True)[1])
 
     def consultar_github(self, forcar=False):
-        """Lê a release mais recente em segundo plano e avisa a interface (os cartões se refazem)."""
+        """Lê a release mais recente e os commits dos sub-apps em segundo plano."""
         def trabalho():
             antes = atualizador.em_cache()
+            antes_git = atualizador.commits_em_cache()
             depois = atualizador.consultar(forcar)
-            if depois and depois != antes:
+            depois_git = atualizador.commits_em_cache()
+            if (depois and depois != antes) or (depois_git != antes_git):
                 GLib.idle_add(self.enviar, {"type": "apps_refresh"})
             if depois:
                 GLib.idle_add(self.avisar_atualizacao, depois["versao"])
         threading.Thread(target=trabalho, daemon=True).start()
 
     def avisar_atualizacao(self, versao):
-        """Notificação do sistema quando algum pacote instalado da suíte tem versão nova (uma vez por versão)."""
+        """Notificação do sistema quando algum app da suíte tem versão ou commit novo no GitHub."""
         tem = atualizador.instalados()
-        if versao == self.avisada or not any(atualizador.mais_nova(versao, v) for v in tem.values()):
+        tem_rel = any(atualizador.mais_nova(versao, v) for v in tem.values())
+        tem_git = any(atualizador.tem_atualizacao_git(a) for a in atualizador.SUBAPPS_GIT)
+        chave = f"{versao}:{sorted(atualizador.commits_em_cache().items())}"
+        if chave == self.avisada or not (tem_rel or tem_git):
             return False
-        self.avisada = versao
-        n = Gio.Notification.new(f"Quilly {versao} disponível")
-        n.set_body("Abra o Quilly e clique em Atualizar em qualquer app.")
+        self.avisada = chave
+        n = Gio.Notification.new(f"Atualização disponível no Quilly")
+        n.set_body("Abra o Quilly e clique em Atualizar — suas configurações serão mantidas.")
         self.get_application().send_notification("atualizacao", n)
         return False
 
     def remover(self, app_id):
-        """Abre o terminal com `sudo pacman -R` do pacote do app; ao fechar, refaz a lista."""
-        tem = atualizador.instalados()
-        pacote = atualizador.pacote_do_app(app_id, tem)
+        """Remove sub-app compilado localmente (mantendo configs) ou abre `sudo pacman -R`."""
         if app_id not in atualizador.AVULSOS:
             raise RuntimeError("O Quilly e o Noty vêm na base. Pra tirar a suíte toda: sudo pacman -R arch-quilly")
+
+        if atualizador.subapp_instalado_git(app_id):
+            def trabalho_git():
+                try:
+                    atualizador.remover_subapp_git(app_id)
+                except Exception as e:  # noqa: BLE001
+                    GLib.idle_add(self.enviar, {"type": "install_error", "appId": app_id, "error": str(e)})
+                finally:
+                    GLib.idle_add(self.enviar, {"type": "apps_refresh"})
+            threading.Thread(target=trabalho_git, daemon=True).start()
+            return
+
+        tem = atualizador.instalados()
+        pacote = atualizador.pacote_do_app(app_id, tem)
         if pacote not in tem or pacote == "arch-quilly":
             raise RuntimeError("Este app veio dentro da suíte antiga (1.2). Atualize o Quilly antes de removê-lo.")
 
@@ -274,24 +322,31 @@ class Janela(archhost.Host):
         threading.Thread(target=trabalho, daemon=True).start()
 
     def instalar(self, app_id):
-        """Baixa (com progresso no cartão), confere e abre o terminal do pacman; ao fechar, refaz a lista."""
+        """
+        Sub-apps nativos (Fotry, Takery, Kromar): quando git+cargo estão presentes, puxa direto do
+        repositório Git, compila para o sistema atual (Linux/Windows) e atualiza preservando configs.
+        Caso contrário, baixa o pacote .pkg.tar.zst da Release do GitHub e instala via pacman.
+        """
         def progresso(pct, texto):
             GLib.idle_add(self.enviar, {"type": "install_progress", "appId": app_id, "percent": pct, "status": texto})
 
         def trabalho():
             try:
-                progresso(0, "Consultando o GitHub…")
-                remoto, nomes = atualizador.plano(app_id)
-                arquivos = []
-                for i, nome in enumerate(nomes):
-                    def p(lido, total, i=i):
-                        fr = (i + (lido / total if total else 0)) / len(nomes)
-                        progresso(int(fr * 95), f"Baixando {remoto['versao']}… {lido // 1_000_000} de {total // 1_000_000} MB")
-                    arquivos.append(atualizador.baixar(remoto, nome, p))
-                progresso(97, "Confirme a instalação no terminal")
-                proc = atualizador.instalar_no_terminal(arquivos)
-                proc.wait()
-                progresso(100, "Concluído")
+                if atualizador.pode_compilar_git(app_id):
+                    atualizador.instalar_via_git(app_id, progresso)
+                else:
+                    progresso(0, "Consultando o GitHub…")
+                    remoto, nomes = atualizador.plano(app_id)
+                    arquivos = []
+                    for i, nome in enumerate(nomes):
+                        def p(lido, total, i=i):
+                            fr = (i + (lido / total if total else 0)) / len(nomes)
+                            progresso(int(fr * 95), f"Baixando {remoto['versao']}… {lido // 1_000_000} de {total // 1_000_000} MB")
+                        arquivos.append(atualizador.baixar(remoto, nome, p))
+                    progresso(97, "Confirme a instalação no terminal")
+                    proc = atualizador.instalar_no_terminal(arquivos)
+                    proc.wait()
+                    progresso(100, "Concluído")
             except Exception as e:  # noqa: BLE001
                 GLib.idle_add(self.enviar, {"type": "install_error", "appId": app_id, "error": str(e)})
             finally:

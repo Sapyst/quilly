@@ -16,7 +16,8 @@ gi.require_version("PangoCairo", "1.0")
 from gi.repository import Pango, PangoCairo  # noqa: E402
 
 APPS = {"quilly": ("#ff0000", "q"), "noty": ("#88c03d", "n"), "artry": ("#fff200", "a"),
-        "volury": ("#605ca8", "v"), "fotry": ("#1fb1b8", "f"), "takery": ("#f7931e", "t")}
+        "volury": ("#605ca8", "v"), "fotry": ("#1fb1b8", "f"), "takery": ("#f7931e", "t"),
+        "kromar": ("#e04f7b", "k")}
 S = 256
 RAIO = 30
 MARGEM = 10

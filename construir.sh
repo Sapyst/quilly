@@ -20,22 +20,28 @@ TRAB="${XDG_CACHE_HOME:-$HOME/.cache}/arch-quilly-build"
 # ~/.cache/arch-quilly-cargo/<app>, fora do NTFS (compila bem mais rápido lá).
 FOTRY_SRC="${FOTRY_SRC:-$RAIZ/apps/fotry}"
 TAKERY_SRC="${TAKERY_SRC:-$RAIZ/apps/takery}"
+KROMAR_SRC="${KROMAR_SRC:-$RAIZ/apps/kromar}"
 CRAFT_FONTS_DIR="${CRAFT_FONTS_DIR:-$RAIZ/vendor/craft-fonts}"
 CARGO_ALVO="${XDG_CACHE_HOME:-$HOME/.cache}/arch-quilly-cargo"
-for d in "$FOTRY_SRC" "$TAKERY_SRC" "$CRAFT_FONTS_DIR"; do
+for d in "$FOTRY_SRC" "$TAKERY_SRC" "$KROMAR_SRC" "$CRAFT_FONTS_DIR"; do
     [ -n "$(ls -A "$d" 2>/dev/null)" ] || { echo "Falta o código em $d: rode git submodule update --init" >&2; exit 1; }
 done
 compilar() {   # compilar <pasta> <binário> <nome> [argumentos do cargo…]
     local src=$1 bin=$2 nome=$3; shift 3
     local alvo="$CARGO_ALVO/$(basename "$src")"
-    if [ ! -x "$alvo/release/$bin" ] || [ -n "$(find "$src" -path "$src/target" -prune -o \( -name '*.rs' -o -name Cargo.toml \) -newer "$alvo/release/$bin" -print -quit)" ]; then
+    if [ ! -x "$alvo/release/$bin" ] || [ -n "$(find "$src" -path "$src/target" -prune -o -path "$src/ui/node_modules" -prune -o \( -name '*.rs' -o -name Cargo.toml \) -newer "$alvo/release/$bin" -print -quit)" ]; then
         echo "Compilando o $nome (cargo build --release)…"
-        (cd "$src" && CRAFT_FONTS_DIR="$CRAFT_FONTS_DIR" CARGO_TARGET_DIR="$alvo" cargo build --release "$@")
+        (cd "$src" && CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-6}" CRAFT_FONTS_DIR="$CRAFT_FONTS_DIR" CARGO_TARGET_DIR="$alvo" cargo build --release "$@")
     fi
 }
 compilar "$RAIZ/apps/noty" noty Noty
 compilar "$FOTRY_SRC" photocraft Fotry -p photocraft
 compilar "$TAKERY_SRC" filmcraft Takery -p filmcraft --features whisper
+if [ ! -f "$KROMAR_SRC/ui/dist/index.html" ] || [ -n "$(find "$KROMAR_SRC/ui/src" -type f -newer "$KROMAR_SRC/ui/dist/index.html" -print -quit 2>/dev/null)" ]; then
+    echo "Compilando a interface do Kromar (pnpm build)…"
+    (cd "$KROMAR_SRC/ui" && pnpm install && pnpm run build)
+fi
+compilar "$KROMAR_SRC" kromar-app Kromar --manifest-path src-tauri/Cargo.toml
 rm -rf "$TRAB" && mkdir -p "$TRAB/arvore" "$RAIZ/dist"
 
 # ---------- árvore de arquivos de cada app (o que vai pra /usr/share/arch-quilly/<app>) ----------
@@ -51,17 +57,18 @@ done
 mkdir -p "$TRAB/arvore/noty"
 cp "$CARGO_ALVO/noty/release/noty" "$TRAB/arvore/noty/noty"
 cp -r "$RAIZ/apps/noty/hunspell" "$RAIZ/apps/noty/VERSAO" "$TRAB/arvore/noty/"
-# Fotry e Takery: o binário e as licenças do projeto de origem (MIT OR Apache-2.0, NOTICE, atribuições)
+# Fotry, Takery e Kromar: o binário e as licenças do projeto de origem
 nativo() {   # nativo <app> <pasta> <binário> <origem> <url da origem>
     local app=$1 src=$2 bin=$3 origem=$4 url=$5
     mkdir -p "$TRAB/arvore/$app/licencas/$origem"
     cp "$CARGO_ALVO/$(basename "$src")/release/$bin" "$TRAB/arvore/$app/$app"
-    for f in LICENSE-MIT LICENSE-APACHE NOTICE ATTRIBUTION.md; do [ -f "$src/$f" ] && cp "$src/$f" "$TRAB/arvore/$app/licencas/$origem/"; done
+    for f in LICENSE LICENSE-MIT LICENSE-APACHE NOTICE ATTRIBUTION.md; do [ -f "$src/$f" ] && cp "$src/$f" "$TRAB/arvore/$app/licencas/$origem/"; done
     echo "$VERSAO" > "$TRAB/arvore/$app/VERSAO"
-    (cd "$src" && git log -1 --format="$app: fork of $url at %H" > "$TRAB/arvore/$app/licencas/$origem/SOURCE.txt")
+    (cd "$src" && git log -1 --format="$app: source $url at %H" > "$TRAB/arvore/$app/licencas/$origem/SOURCE.txt")
 }
 nativo fotry "$FOTRY_SRC" photocraft photocraft https://github.com/storytold/photocraft
 nativo takery "$TAKERY_SRC" filmcraft filmcraft https://github.com/storytold/filmcraft
+nativo kromar "$KROMAR_SRC" kromar-app kromar https://github.com/Sapyst/kromar
 cp -r "$RAIZ/icones" "$TRAB/arvore/icones"
 chmod -R u=rwX,go=rX "$TRAB/arvore"        # modos do NTFS (ex.: 0600) não podem entrar no pacote
 # ícones em vários tamanhos: gerados aqui (dentro do fakeroot do makepkg o carregador de imagens não roda)
@@ -70,7 +77,7 @@ import os, sys, gi
 gi.require_version("GdkPixbuf", "2.0")
 from gi.repository import GdkPixbuf
 pasta = sys.argv[1]
-for app in ("quilly", "noty", "artry", "volury", "fotry", "takery"):
+for app in ("quilly", "noty", "artry", "volury", "fotry", "takery", "kromar"):
     for t in (256, 128, 64, 48, 32):
         os.makedirs(os.path.join(pasta, str(t)), exist_ok=True)
         GdkPixbuf.Pixbuf.new_from_file_at_scale(os.path.join(pasta, app + ".png"), t, t, True).savev(
@@ -80,7 +87,7 @@ PY
 cat > "$TRAB/PKGBUILD" <<PKG
 # Gerado por construir.sh (Arch Quilly). Não edite aqui: edite construir.sh.
 pkgbase=arch-quilly
-pkgname=(arch-quilly arch-noty arch-artry arch-volury arch-fotry arch-takery)
+pkgname=(arch-quilly arch-noty arch-artry arch-volury arch-fotry arch-takery arch-kromar)
 pkgver=$VERSAO
 pkgrel=1
 arch=('x86_64')
@@ -93,11 +100,12 @@ _artry=('python-docx' 'python-markdown' 'fontconfig')
 _volury=('python-markdown')
 _fotry=('vulkan-icd-loader' 'libxkbcommon' 'wayland' 'gtk3' 'curl' 'libarchive' 'xdg-utils' 'desktop-file-utils' 'shared-mime-info')   # nativo (wgpu); curl+bsdtar instalam o motor de IA do Upscale
 _takery=('vulkan-icd-loader' 'libxkbcommon' 'wayland' 'gtk3' 'alsa-lib' 'libva' 'whisper-cpp' 'ggml-vulkan' 'xdg-utils' 'desktop-file-utils' 'shared-mime-info')   # nativo; libva: decodificação por hardware; whisper-cpp+ggml-vulkan: legendas na GPU
+_kromar=('gtk3' 'webkit2gtk-4.1' 'cairo' 'gdk-pixbuf2' 'glib2' 'xdg-utils' 'desktop-file-utils' 'shared-mime-info')   # nativo (Rust + Tauri v2)
 
 # instala um app: arquivos, lançador, .desktop, ícones, tipos de arquivo
 _instalar_app() {
     local app=\$1 Nome=\$2 mimes=\$3 descricao=\$4 categorias=\$5
-    if [ "\$app" = noty ] || [ "\$app" = fotry ] || [ "\$app" = takery ]; then
+    if [ "\$app" = noty ] || [ "\$app" = fotry ] || [ "\$app" = takery ] || [ "\$app" = kromar ]; then
         # nativos: binário em /usr/lib, licenças do projeto de origem (forks) em /usr/share/licenses
         install -Dm755 "\$startdir/arvore/\$app/\$app" "\$pkgdir/usr/lib/arch-quilly/\$app/\$app"
         install -Dm644 "\$startdir/arvore/\$app/VERSAO" "\$pkgdir/usr/share/arch-quilly/\$app/VERSAO"
@@ -113,6 +121,10 @@ _instalar_app() {
 #!/bin/sh
 # \$Nome (Arch Quilly), nativo. Mensagens em ~/.cache/arch-quilly/\$app.log
 mkdir -p "\\\${XDG_CACHE_HOME:-\\\$HOME/.cache}/arch-quilly"
+if [ -d "\\\$HOME/.local/opt/kromar/libs" ] && [ "\$app" = kromar ]; then
+  export LD_LIBRARY_PATH="\\\$HOME/.local/opt/kromar/libs\\\${LD_LIBRARY_PATH:+:\\\$LD_LIBRARY_PATH}"
+fi
+export GTK_USE_PORTAL=1
 exec /usr/lib/arch-quilly/\$app/\$app "\\\$@" 2>>"\\\${XDG_CACHE_HOME:-\\\$HOME/.cache}/arch-quilly/\$app.log"
 LANCADOR
     else
@@ -223,6 +235,12 @@ package_arch-volury() {
     pkgdesc="Volury (Arch Quilly): editor de e-books EPUB 2/3"
     depends=("\${_comum[@]}" "\${_volury[@]}")
     _instalar_app volury Volury "application/epub+zip;application/x-hyp;" "Editor de e-books EPUB" "Office;Publishing;"
+}
+package_arch-kromar() {
+    arch=('x86_64')
+    pkgdesc="Kromar (Arch Quilly): non-destructive RAW photo darkroom with neural Depth Map and local AI"
+    depends=("\${_kromar[@]}")
+    _instalar_app kromar Kromar "image/jpeg;image/png;image/x-canon-cr2;image/x-canon-cr3;image/x-adobe-dng;image/x-sony-arw;image/x-nikon-nef;" "Editor de fotos RAW não-destrutivo com Depth Map neural e IA local" "Graphics;Photography;RasterGraphics;"
 }
 PKG
 

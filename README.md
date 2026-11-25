@@ -19,40 +19,27 @@ Arch Linux first (`linux` packages in this repo) · the Windows originals live i
 | **Volury** | `volury file` | An EPUB 2/3 e-book editor: chapters, images, CSS, table of contents, validation; imports `.hyp` with its attachments. |
 | **Fotry** | `fotry image` | A native image editor: layers, masks, adjustments, type, PSD, camera RAW and AI upscale (built on PhotoCraft). |
 | **Takery** | `takery video` | A native video editor: timeline, color, audio, titles, hardware decoding/encoding and **one-click auto captions** on the GPU (built on FilmCraft). |
+| **Kromar** | `kromar` | A non-destructive RAW photo darkroom: Rust RAW engine, CIELAB 4-zone color, neural Depth Anything V2 + progressive optical bokeh, advanced masks, preset extraction and local AI. |
 
-Every app has its own initial and the same icon design (q n a v f t). Noty is a native Rust app (GTK4 +
+Every app has its own initial and the same icon design (q n a v f t k). Noty is a native Rust app (GTK4 +
 libadwaita + GtkSourceView + libspelling); Quilly, Artry and Volury are GTK4 + libadwaita windows around a WebKit
-view (HTML/JS interface, a small Python native side), on their way to Rust too; Fotry and Takery are
-native Rust apps drawn on the GPU. No emoji anywhere, neutral colors, dark by default, the desktop's accent.
+view (HTML/JS interface, a small Python native side), on their way to Rust too; Fotry, Takery and Kromar are
+native Rust apps. No emoji anywhere, neutral colors, dark by default, the desktop's accent.
 
-## Install (Arch Linux)
+## Install & Automatic Git Build (Linux / Windows)
 
-Install the base, the Quilly hub with Noty:
+Quilly supports two automatic install/update modes depending on the host OS and installed tools:
 
-```bash
-sudo pacman -U arch-quilly-1.3.0-1-any.pkg.tar.zst
-```
-
-Then open **Quilly** and click **Instalar** on Artry, Volury, Fotry or Takery: each one is its own package,
-downloaded from the latest release. A single app also installs without the hub:
+1. **Direct Git Compile (Linux & Windows — automatic when `git` + `cargo` are installed):**
+   Quilly checks each native sub-app's repository directly (`Sapyst/fotry`, `Sapyst/takery`, `Sapyst/kromar`), clones/pulls the latest commit, compiles natively for the current OS (ELF binary on Linux, `.exe` on Windows), backs up user settings automatically, and replaces only the old executable — **user configurations and catalogs are never overwritten**.
+2. **Prebuilt Arch Linux Packages (`.pkg.tar.zst`):**
+   On Arch Linux without Rust/Git (or for the base `arch-quilly`, `Artry`, and `Volury`), Quilly downloads the signed release packages verified against `SHA256SUMS` and installs via `pacman -U`:
 
 ```bash
-sudo pacman -U arch-takery-1.3.0-1-x86_64.pkg.tar.zst
+sudo pacman -U arch-quilly-1.5.0-1-x86_64.pkg.tar.zst
 ```
 
-Packages are on the [Releases](https://github.com/Sapyst/quilly/releases) page.
-
-**Updates from the Quilly hub.** Quilly reads the latest release of this repository (GitHub's public API, no
-account) when it opens and every hour while it is open, sends a desktop notification when there is a newer
-version, shows "Atualizar vX.Y" on the cards, downloads the packages, checks them against the release's
-`SHA256SUMS` and opens a terminal with `sudo pacman -U` (the administrator password is only ever typed in the
-terminal). An update takes the base and every installed app in one transaction, and pacman replaces the old
-files entirely. Coming from 1.2 (the whole suite in one package), the update also brings the four apps as their
-own packages, so none disappears. "Desinstalar" in a card's menu removes that app (`sudo pacman -R`).
-Publishing a release here updates everyone's suite. `pacman` pulls the
-dependencies (python-gobject, gtk4, libadwaita, webkitgtk-6.0, gtksourceview5 and libspelling for Noty, hunspell/enchant,
-python-docx and python-markdown; Vulkan and GTK3 for Fotry and Takery, whisper-cpp and ggml-vulkan for Takery's captions). `arch-noty` alone and the base do not mix: the base
-already contains Noty. Remove everything with `sudo pacman -R arch-quilly arch-artry arch-volury arch-fotry arch-takery`.
+Then open **Quilly** and click **Instalar** or **Atualizar** on Artry, Volury, Fotry, Takery or Kromar. Packages are on the [Releases](https://github.com/Sapyst/quilly/releases) page.
 
 The suite registers the file types `.hyp` (Hyper document), `.artry`, `.pcraft` (Fotry document) and `.fcproj` (Takery project) with their icons.
 
